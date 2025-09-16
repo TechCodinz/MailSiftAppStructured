@@ -14,24 +14,24 @@
     <h2>Payments</h2>
     <table>
       <thead>
-  <tr><th>Asset</th><th>Amount</th><th>TXID</th><th>Contact</th><th>Verified</th><th>License Key</th><th>Actions</th></tr>
+  <tr><th>Address</th><th>Amount</th><th>TXID</th><th>Contact</th><th>Verified</th><th>License</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for p in payments %}
           <tr>
-            <td>{{ p.asset }}</td>
+            <td>{{ p.address }}</td>
             <td>{{ p.amount }}</td>
             <td>{{ p.txid }}</td>
             <td>{{ p.contact }}</td>
             <td>{% if p.verified %}<span class="verified">Yes</span>{% else %}No{% endif %}</td>
-            <td>{{ p.license_key or '' }}</td>
+            <td>{{ p.license or '' }}</td>
             <td>
               {% if not p.verified %}
                 <form method="post" style="display:inline">
                   <input type="hidden" name="txid" value="{{ p.txid }}">
                   <button type="submit">Mark Verified</button>
                 </form>
-                <form method="post" action="/admin/verify-online" style="display:inline; margin-left:6px">
+                <form method="post" action="/admin/payments/verify-online" style="display:inline; margin-left:6px">
                   <input type="hidden" name="txid" value="{{ p.txid }}">
                   <button type="submit">Verify Online</button>
                 </form>

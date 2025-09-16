@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, abort, send_file
 import os
-from app import extract_emails_from_text, extract_emails_from_html, group_by_provider, session_increment_scrape_quota
+from app import extract_emails_from_text, extract_emails_from_html, group_by_provider, session_increment_scrape_quota, detect_provider
 from file_parsing import extract_text_from_file
 from payments import record_payment, get_payment, mark_verified, list_payments, verify_admin_key, verify_trc20_tx_online
 from functools import wraps
@@ -9,6 +9,7 @@ import csv
 import json
 import time
 import random
+from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('MAILSIFT_SECRET', 'dev-secret-key')
@@ -195,6 +196,56 @@ def download_json():
     mem = io.BytesIO(json.dumps(payload, indent=2).encode('utf-8'))
     mem.seek(0)
     return send_file(mem, mimetype='application/json', as_attachment=True, download_name='extracted_emails.json')
+
+
+@app.route('/download/excel')
+def download_excel():
+    emails = session.get('extracted') or []
+    meta = session.get('meta', {})
+    if not emails:
+        return redirect(url_for('index'))
+    try:
+        from openpyxl import Workbook
+    except Exception:
+        # Fallback to CSV if openpyxl is unavailable
+        si = io.StringIO()
+        cw = csv.writer(si)
+        cw.writerow(['email', 'provider'])
+        for e in emails:
+            cw.writerow([e, detect_provider(e)])
+        mem = io.BytesIO(si.getvalue().encode('utf-8'))
+        mem.seek(0)
+        return send_file(mem, mimetype='text/csv', as_attachment=True, download_name='extracted_emails.csv')
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'emails'
+    headers = ['email', 'provider', 'role', 'mx']
+    ws.append(headers)
+    for e in emails:
+        m = meta.get(e, {})
+        ws.append([
+            e,
+            detect_provider(e),
+            bool(m.get('role')),
+            m.get('mx')
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    ts = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+    return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=f'extracted_emails_{ts}.xlsx')
+
+
+@app.route('/reset')
+def reset():
+    # Clear user session data to reset license and results
+    for k in ['extracted', 'invalid', 'meta', 'unlocked', 'scrape_quota']:
+        try:
+            session.pop(k, None)
+        except Exception:
+            pass
+    return redirect(url_for('index'))
 
 
 def admin_auth_required(f):
