@@ -104,11 +104,20 @@
 <body>
   <header>📧 MailSift – Smart Email Extractor</header>
   <div class="top-right">
-    <a href="/reset">🔁 Reset License</a>
+    <a href="/paywall">💳 Unlock</a>
+    &nbsp;|&nbsp;
+    <a href="/download/desktop">⬇️ Desktop</a>
+    &nbsp;|&nbsp;
+    <a href="/reset">🔁 Reset</a>
   </div>
   <div class="container">
+    {% if plan_id or usage %}
+      <div style="background:#232323; padding:10px; border-radius:8px; margin-bottom:14px">
+        <strong>Plan:</strong> {{ plan_id or 'one_time' }}{% if usage %} • <strong>This month:</strong> {{ usage.emails or 0 }} emails, {{ usage.domains or 0 }} domains{% endif %}
+      </div>
+    {% endif %}
     <form method="POST" enctype="multipart/form-data">
-  <label>Scrape website(s) (premium after 3 free uses):</label>
+  <label>Scrape website(s) (premium after 3 free fetches):</label>
   <label for="url_input">Website URL(s)</label>
   <textarea id="url_input" name="url" rows="2" placeholder="https://example.com or paste multiple URLs separated by newline or comma"></textarea>
   <button type="submit" formaction="/scrape" formmethod="post">🔍 Scrape URLs</button>
@@ -123,6 +132,9 @@
     </form>
 
     {% if results %}
+      {% if results.preview %}
+        <div class="error">Preview mode: showing first {{ results.preview_n }} results. Unlock to access all results and downloads.</div>
+      {% endif %}
       <div class="actions">
         <a href="/download"><button>⬇️ Download CSV</button></a>
         <a href="/download/json"><button>📄 Download JSON</button></a>

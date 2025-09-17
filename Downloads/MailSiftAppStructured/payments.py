@@ -3,12 +3,13 @@ import json
 import hmac
 import hashlib
 import time
-from typing import Optional
+from typing import Optional, Tuple, Dict, Any
+from datetime import datetime
 import smtplib
 from email.message import EmailMessage
 import requests
 
-PAYMENTS_FILE = os.path.join(os.path.dirname(__file__), 'payments.json')
+PAYMENTS_FILE = os.environ.get('MAILSIFT_PAYMENTS_FILE') or os.path.join(os.path.dirname(__file__), 'payments.json')
 SECRET = os.environ.get('MAILSIFT_SECRET', 'dev-secret-key')
 ADMIN_KEY = os.environ.get('MAILSIFT_ADMIN_KEY', 'admin-secret')
 
@@ -28,7 +29,7 @@ def _save_payments(data):
         json.dump(data, f, indent=2)
 
 
-def record_payment(txid: str, address: str, amount: float = 0.0):
+def record_payment(txid: str, address: str, amount: float = 0.0, plan: Optional[str] = None, contact: Optional[str] = None):
     data = _load_payments()
     now = int(time.time())
     data[txid] = {
@@ -38,7 +39,10 @@ def record_payment(txid: str, address: str, amount: float = 0.0):
         'timestamp': now,
         'verified': False,
         'license': None,
+        'plan': plan,
     }
+    if contact:
+        data[txid]['contact'] = contact
     _save_payments(data)
     return data[txid]
 
@@ -71,6 +75,48 @@ def get_payment(txid: str):
 
 def list_payments():
     return _load_payments()
+
+
+def find_by_license(license_key: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+    data = _load_payments()
+    for txid, rec in data.items():
+        if rec.get('license') == license_key:
+            return txid, rec
+    return None
+
+
+def _month_key(ts: Optional[float] = None) -> str:
+    dt = datetime.utcfromtimestamp(ts or time.time())
+    return dt.strftime('%Y-%m')
+
+
+def get_usage(license_key: str, month: Optional[str] = None) -> Dict[str, int]:
+    found = find_by_license(license_key)
+    if not found:
+        return {'emails': 0, 'domains': 0}
+    _, rec = found
+    usage = rec.get('usage') or {}
+    m = month or _month_key()
+    return usage.get(m, {'emails': 0, 'domains': 0})
+
+
+def increment_usage(license_key: str, emails_delta: int = 0, domains_delta: int = 0) -> Dict[str, int]:
+    found = find_by_license(license_key)
+    if not found:
+        return {'emails': 0, 'domains': 0}
+    txid, rec = found
+    data = _load_payments()
+    rec = data.get(txid, rec)
+    usage = rec.get('usage') or {}
+    m = _month_key()
+    cur = usage.get(m, {'emails': 0, 'domains': 0})
+    cur['emails'] = max(0, int(cur.get('emails', 0)) + int(emails_delta or 0))
+    cur['domains'] = max(0, int(cur.get('domains', 0)) + int(domains_delta or 0))
+    usage[m] = cur
+    rec['usage'] = usage
+    data[txid] = rec
+    _save_payments(data)
+    return cur
 
 
 def generate_license_for(txid: str) -> str:

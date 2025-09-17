@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 import os
 from app import extract_emails_from_text, extract_emails_from_html, group_by_provider, session_increment_scrape_quota, detect_provider
 from file_parsing import extract_text_from_file
-from payments import record_payment, get_payment, mark_verified, list_payments, verify_admin_key, verify_trc20_tx_online
+from payments import record_payment, get_payment, mark_verified, list_payments, verify_admin_key, verify_trc20_tx_online, find_by_license, get_usage, increment_usage
 from functools import wraps
 import io
 import csv
@@ -10,9 +10,11 @@ import json
 import time
 import random
 from datetime import datetime
+from pathlib import Path
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('MAILSIFT_SECRET', 'dev-secret-key')
+SETTINGS_FILE = os.environ.get('MAILSIFT_SETTINGS_FILE') or os.path.join(os.path.dirname(__file__), 'settings.json')
 
 
 def admin_auth_required(f):
@@ -32,6 +34,98 @@ def admin_auth_required(f):
     return inner
 
 
+def _load_settings():
+    if not os.path.exists(SETTINGS_FILE):
+        return {}
+    try:
+        with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_settings(data):
+    try:
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+def get_settings():
+    # Merge env defaults with file settings
+    data = _load_settings()
+    defaults = {
+        'price_usdt': float(os.environ.get('PRICE_USDT', '30') or 30),
+        'free_scrape_limit': int(os.environ.get('FREE_SCRAPE_LIMIT', '3') or 3),
+        'preview_sample_size': int(os.environ.get('PREVIEW_SAMPLE_SIZE', '20') or 20),
+        'wallets': {
+            'btc': os.environ.get('WALLET_BTC', ''),
+            'trc20': os.environ.get('MAILSIFT_RECEIVE_ADDRESS', ''),
+            'eth': os.environ.get('WALLET_ETH', ''),
+        },
+        'tiers': data.get('tiers') or [
+            {'id': 'free', 'name': 'Free', 'monthly_emails': 500, 'monthly_domains': 500, 'features': ['basic_extraction', 'csv_export'], 'price_usd': 0},
+            {'id': 'starter', 'name': 'Starter', 'monthly_emails': 5000, 'monthly_domains': 1000, 'features': ['basic_verification', 'limited_api', 'extra_fields'], 'price_usd_range': '20-50'},
+            {'id': 'pro', 'name': 'Pro', 'monthly_emails': 50000, 'features': ['full_verification', 'richer_data', 'priority_support'], 'price_usd_range': '100-300'},
+            {'id': 'business', 'name': 'Business/Enterprise', 'monthly_emails': 100000, 'features': ['advanced_features', 'SLA', 'dedicated_support'], 'price_usd_range': '500-2000+'},
+        ],
+        'payg_per_1000_usd': data.get('payg_per_1000_usd', '1-5'),
+    }
+    # Apply file overrides
+    defaults.update({k: v for k, v in data.items() if k != 'wallets'})
+    if isinstance(data.get('wallets'), dict):
+        defaults['wallets'].update(data['wallets'])
+    return defaults
+
+
+def get_pricing_context():
+    """Provide template context for pricing, wallets and tiers."""
+    s = get_settings()
+    return {
+        'price_usdt': s['price_usdt'],
+        'wallet_btc': s['wallets'].get('btc', ''),
+        'wallet_trc20': s['wallets'].get('trc20', ''),
+        'wallet_eth': s['wallets'].get('eth', ''),
+        'tiers': s.get('tiers', []),
+        'payg_per_1000_usd': s.get('payg_per_1000_usd'),
+        'free_limit': s.get('free_scrape_limit'),
+        'preview_sample_size': s.get('preview_sample_size'),
+    }
+
+
+def _current_plan_limits(plan_id: str, settings: dict) -> dict:
+    # simple lookup for monthly emails/domains limits by tier id
+    limits = {'monthly_emails': None, 'monthly_domains': None}
+    for t in settings.get('tiers', []) or []:
+        if t.get('id') == plan_id:
+            limits['monthly_emails'] = t.get('monthly_emails')
+            limits['monthly_domains'] = t.get('monthly_domains')
+            break
+    return limits
+
+
+@app.template_filter('mask_email')
+def mask_email_filter(email):
+    try:
+        local, domain = email.split('@', 1)
+        local_mask = (local[:1] + '***') if len(local) >= 1 else '***'
+        parts = domain.split('.')
+        first = parts[0] if parts else ''
+        tld = parts[-1] if parts else ''
+        first_mask = (first[:1] + '***') if len(first) >= 1 else '***'
+        suffix = ('.' + tld) if tld else ''
+        return f"{local_mask}@{first_mask}{suffix}"
+    except Exception:
+        return '***'
+
+
+@app.route('/paywall', methods=['GET'])
+def paywall_view():
+    return render_template('paywall.html', **get_pricing_context())
+
+
 @app.route('/')
 def index():
     # show any current session results
@@ -39,8 +133,25 @@ def index():
     if 'extracted' in session:
         extracted = session.get('extracted', [])
         meta = session.get('meta', {})
-        results = {'valid': group_by_provider(extracted), 'meta': meta, 'invalid': session.get('invalid', [])}
-    return render_template('index.html', results=results)
+        s = get_settings()
+        if not session.get('unlocked'):
+            # Show only a preview sample
+            preview_n = max(1, int(s.get('preview_sample_size') or 20))
+            sample = extracted[:preview_n]
+            provider_groups = group_by_provider(sample)
+            results = {'valid': provider_groups, 'meta': meta, 'invalid': session.get('invalid', []), 'preview': True, 'preview_n': preview_n}
+        else:
+            results = {'valid': group_by_provider(extracted), 'meta': meta, 'invalid': session.get('invalid', [])}
+    # attach usage/plan info for banner
+    s = get_settings()
+    plan_id = session.get('plan_id') or 'one_time'
+    usage = None
+    if session.get('license_key'):
+        try:
+            usage = get_usage(session.get('license_key'))
+        except Exception:
+            usage = None
+    return render_template('index.html', results=results, plan_id=plan_id, usage=usage, tiers=s.get('tiers', []))
 
 
 @app.route('/scrape', methods=['POST'])
@@ -73,8 +184,27 @@ def scrape():
                 meta[e] = {'role': False}
         session['meta'] = meta
 
-    # If we have URLs, fetch them concurrently (best-effort)
+    # If we have URLs, enforce paywall after a small free quota and then fetch concurrently (best-effort)
     if url_list:
+        # paywall gating for URL scraping usage
+        s = get_settings()
+        free_limit = int(s.get('free_scrape_limit') or 3)
+        quota = session.get('scrape_quota', 0)
+        planned = len(url_list)
+        if not session.get('unlocked') and (quota >= free_limit or (quota + planned) > free_limit):
+            return render_template('paywall.html', error=f'Free limit reached ({free_limit} site fetches). Please unlock to continue.', **get_pricing_context())
+        # enforce plan domain quota if license present
+        plan_id = session.get('plan_id')
+        license_key = session.get('license_key')
+        if license_key and plan_id and plan_id != 'one_time':
+            limits = _current_plan_limits(plan_id, s)
+            if limits.get('monthly_domains'):
+                try:
+                    u = get_usage(license_key)
+                    if int(u.get('domains', 0)) + planned > int(limits['monthly_domains']):
+                        return render_template('paywall.html', error='Plan domain quota exceeded. Upgrade or wait for next month.', **get_pricing_context())
+                except Exception:
+                    pass
         try:
             import requests
             from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -114,8 +244,17 @@ def scrape():
     session['invalid'] = sorted(set(session.get('invalid', []) + total_invalid))
     session['meta'] = session.get('meta', {})
 
-    provider_groups = group_by_provider(session.get('extracted', []))
-    results = {'valid': provider_groups, 'per_site': per_site or None, 'invalid': session.get('invalid', []), 'meta': session.get('meta', {})}
+    # Apply preview gating to results list for display
+    all_emails = session.get('extracted', [])
+    s = get_settings()
+    if not session.get('unlocked'):
+        preview_n = max(1, int(s.get('preview_sample_size') or 20))
+        show = all_emails[:preview_n]
+        provider_groups = group_by_provider(show)
+        results = {'valid': provider_groups, 'per_site': per_site or None, 'invalid': session.get('invalid', []), 'meta': session.get('meta', {}), 'preview': True, 'preview_n': preview_n, 'quota': session.get('scrape_quota', 0), 'free_limit': s.get('free_scrape_limit')}
+    else:
+        provider_groups = group_by_provider(all_emails)
+        results = {'valid': provider_groups, 'per_site': per_site or None, 'invalid': session.get('invalid', []), 'meta': session.get('meta', {}), 'quota': session.get('scrape_quota', 0), 'free_limit': s.get('free_scrape_limit')}
     return render_template('index.html', results=results)
 
 
@@ -126,9 +265,14 @@ def pay():
         address = request.form.get('contact') or request.form.get('address')
         amount = float(request.form.get('amount') or 0)
         contact = request.form.get('contact')
+        asset = (request.form.get('asset') or '').strip()
+        # require contact email so we can email the license automatically
+        if not contact or '@' not in contact:
+            return render_template('paywall.html', error='Contact email required to deliver license.', **get_pricing_context())
         if not txid or not address:
-            return render_template('paywall.html', error='txid and address required')
-        rec = record_payment(txid, address, amount)
+            return render_template('paywall.html', error='txid and address required', **get_pricing_context())
+        plan = request.form.get('plan') or 'one_time'
+        rec = record_payment(txid, address, amount, plan=plan, contact=contact)
         # attach contact if provided
         data = list_payments()
         if txid in data and contact:
@@ -136,7 +280,21 @@ def pay():
             # save back
             from payments import _save_payments
             _save_payments(data)
-        return render_template('paywall.html', error='Payment received. Awaiting verification. TXID: ' + str(txid))
+        # Attempt automatic verification for USDT (TRC20) if receiving address configured
+        auto_msg = None
+        try:
+            expected_addr = os.environ.get('MAILSIFT_RECEIVE_ADDRESS')
+            if expected_addr and ('trc20' in asset.lower() or 'usdt' in asset.lower() or asset.strip() == ''):
+                ok = verify_trc20_tx_online(txid)
+                if ok:
+                    info = mark_verified(txid, verifier='trc20-auto')
+                    session['unlocked'] = True
+                    session['plan_id'] = plan
+                    session['license_key'] = info.get('license')
+                    auto_msg = 'Payment verified on-chain. License emailed to your contact.'
+        except Exception:
+            pass
+        return render_template('paywall.html', error=(auto_msg or ('Payment received. Awaiting verification. TXID: ' + str(txid))), pending_txid=txid, **get_pricing_context())
     return render_template('paywall.html')
 
 
@@ -147,8 +305,10 @@ def redeem():
     for txid, info in payments.items():
         if info.get('license') == key or txid == key:
             session['unlocked'] = True
-            return render_template('paywall.html', error='Unlocked. License applied.')
-    return render_template('paywall.html', error='Invalid license or txid')
+            session['license_key'] = info.get('license') or txid
+            session['plan_id'] = info.get('plan') or 'one_time'
+            return render_template('paywall.html', error='Unlocked. License applied.', **get_pricing_context())
+    return render_template('paywall.html', error='Invalid license or txid', **get_pricing_context())
 
 
 @app.route('/admin/payments', methods=['GET', 'POST'])
@@ -169,6 +329,28 @@ def admin_payments():
 
 @app.route('/download')
 def download():
+    if not session.get('unlocked'):
+        return render_template('paywall.html', error='Please unlock to download results.', **get_pricing_context())
+    # increment usage by emails count and domains estimated
+    license_key = session.get('license_key')
+    if license_key:
+        emails = session.get('extracted') or []
+        domains = len({e.split('@',1)[1] for e in emails if '@' in e})
+        # enforce plan email quota before incrementing
+        s = get_settings()
+        plan_id = session.get('plan_id')
+        if plan_id and plan_id != 'one_time':
+            limits = _current_plan_limits(plan_id, s)
+            try:
+                u = get_usage(license_key)
+                if limits.get('monthly_emails') and int(u.get('emails', 0)) + len(emails) > int(limits['monthly_emails']):
+                    return render_template('paywall.html', error='Plan email quota exceeded. Upgrade or wait for next month.', **get_pricing_context())
+            except Exception:
+                pass
+        try:
+            increment_usage(license_key, emails_delta=len(emails), domains_delta=domains)
+        except Exception:
+            pass
     emails = session.get('extracted')
     if not emails:
         return redirect(url_for('index'))
@@ -184,6 +366,26 @@ def download():
 
 @app.route('/download/json')
 def download_json():
+    if not session.get('unlocked'):
+        return render_template('paywall.html', error='Please unlock to download results.', **get_pricing_context())
+    license_key = session.get('license_key')
+    if license_key:
+        emails = session.get('extracted') or []
+        domains = len({e.split('@',1)[1] for e in emails if '@' in e})
+        s = get_settings()
+        plan_id = session.get('plan_id')
+        if plan_id and plan_id != 'one_time':
+            limits = _current_plan_limits(plan_id, s)
+            try:
+                u = get_usage(license_key)
+                if limits.get('monthly_emails') and int(u.get('emails', 0)) + len(emails) > int(limits['monthly_emails']):
+                    return render_template('paywall.html', error='Plan email quota exceeded. Upgrade or wait for next month.', **get_pricing_context())
+            except Exception:
+                pass
+        try:
+            increment_usage(license_key, emails_delta=len(emails), domains_delta=domains)
+        except Exception:
+            pass
     emails = session.get('extracted')
     meta = session.get('meta', {})
     if not emails:
@@ -200,6 +402,26 @@ def download_json():
 
 @app.route('/download/excel')
 def download_excel():
+    if not session.get('unlocked'):
+        return render_template('paywall.html', error='Please unlock to download results.', **get_pricing_context())
+    license_key = session.get('license_key')
+    if license_key:
+        emails = session.get('extracted') or []
+        domains = len({e.split('@',1)[1] for e in emails if '@' in e})
+        s = get_settings()
+        plan_id = session.get('plan_id')
+        if plan_id and plan_id != 'one_time':
+            limits = _current_plan_limits(plan_id, s)
+            try:
+                u = get_usage(license_key)
+                if limits.get('monthly_emails') and int(u.get('emails', 0)) + len(emails) > int(limits['monthly_emails']):
+                    return render_template('paywall.html', error='Plan email quota exceeded. Upgrade or wait for next month.', **get_pricing_context())
+            except Exception:
+                pass
+        try:
+            increment_usage(license_key, emails_delta=len(emails), domains_delta=domains)
+        except Exception:
+            pass
     emails = session.get('extracted') or []
     meta = session.get('meta', {})
     if not emails:
@@ -248,16 +470,6 @@ def reset():
     return redirect(url_for('index'))
 
 
-def admin_auth_required(f):
-    @wraps(f)
-    def inner(*args, **kwargs):
-        key = request.args.get('key') or request.form.get('key') or request.headers.get('X-Admin-Key')
-        if not verify_admin_key(key or ''):
-            return jsonify({'error': 'unauthorized'}), 401
-        return f(*args, **kwargs)
-    return inner
-
-
 @app.route('/admin/payments/verify', methods=['POST'])
 @admin_auth_required
 def admin_verify():
@@ -281,6 +493,81 @@ def admin_verify_online():
         info = mark_verified(txid, verifier='trc20-auto')
         return jsonify({'ok': True, 'payment': info})
     return jsonify({'ok': False, 'error': 'not found or not confirmed on chain'}), 404
+
+
+@app.route('/pay/status/<txid>', methods=['GET'])
+def pay_status(txid):
+    info = get_payment(txid)
+    if not info:
+        return jsonify({'ok': False, 'verified': False}), 404
+    return jsonify({'ok': True, 'verified': bool(info.get('verified')), 'license': info.get('license')})
+
+
+@app.route('/admin/settings', methods=['GET', 'POST'])
+@admin_auth_required
+def admin_settings():
+    s = get_settings()
+    if request.method == 'POST':
+        # Update selected fields
+        try:
+            price = request.form.get('price_usdt')
+            free_lim = request.form.get('free_scrape_limit')
+            preview_n = request.form.get('preview_sample_size')
+            wallets = {
+                'btc': request.form.get('wallet_btc') or s['wallets'].get('btc', ''),
+                'trc20': request.form.get('wallet_trc20') or s['wallets'].get('trc20', ''),
+                'eth': request.form.get('wallet_eth') or s['wallets'].get('eth', ''),
+            }
+            data = _load_settings()
+            if price:
+                data['price_usdt'] = float(price)
+            if free_lim:
+                data['free_scrape_limit'] = int(free_lim)
+            if preview_n:
+                data['preview_sample_size'] = int(preview_n)
+            data['wallets'] = wallets
+            _save_settings(data)
+            return redirect(url_for('admin_settings'))
+        except Exception:
+            pass
+    return render_template('admin_settings.html', settings=get_settings())
+
+
+@app.route('/admin/metrics')
+@admin_auth_required
+def admin_metrics():
+    # compile simple metrics
+    payments = list_payments()
+    rows = list(payments.values()) if isinstance(payments, dict) else payments
+    total = len(rows)
+    verified = sum(1 for r in rows if r.get('verified'))
+    revenue = 0.0
+    for r in rows:
+        try:
+            revenue += float(r.get('amount') or 0)
+        except Exception:
+            pass
+    active = sum(1 for r in rows if r.get('license'))
+    recent = sorted(rows, key=lambda r: r.get('timestamp', 0), reverse=True)[:20]
+    metrics = {
+        'total_payments': total,
+        'verified_payments': verified,
+        'revenue_usd': int(revenue),
+        'active_licenses': active,
+        'recent': recent,
+    }
+    return render_template('admin_metrics.html', metrics=metrics)
+
+
+@app.route('/download/desktop')
+def download_desktop():
+    # Serve a pre-built binary if present
+    build_dir = Path(os.environ.get('DESKTOP_BUILD_DIR') or Path(__file__).parent / 'dist')
+    candidates = list(build_dir.glob('gui*'))
+    if not candidates:
+        return jsonify({'error': 'desktop build not found'}), 404
+    target = max(candidates, key=lambda p: p.stat().st_mtime)
+    return send_file(str(target), as_attachment=True, download_name=target.name)
 
 
 if __name__ == '__main__':

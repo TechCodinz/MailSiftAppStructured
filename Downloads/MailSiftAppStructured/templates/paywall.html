@@ -70,7 +70,7 @@
 <body>
     <div class="paywall">
         <h2>Unlock MailSift</h2>
-        <p>Enter your license key or pay to get one instantly:</p>
+        <p>Enter your license key or pay {{ price_usdt or 30 }} USDT to get one instantly:</p>
         <form method="post" action="/unlock">
             <input type="text" name="license_key" placeholder="Enter License Key" required>
             <button type="submit">Unlock</button>
@@ -83,23 +83,35 @@
         <div class="wallets">
             <p><strong>Crypto Wallets for Payment:</strong></p>
             <ul>
-                <li>BTC: <code>bc1qyourbtcwallet</code></li>
-                <li>USDT (TRC20): <code>TXyourusdtaddress</code></li>
-                <li>ETH: <code>0xyourethwallet</code></li>
+                {% if wallet_btc %}<li>BTC: <code>{{ wallet_btc }}</code></li>{% endif %}
+                {% if wallet_trc20 %}<li>USDT (TRC20): <code>{{ wallet_trc20 }}</code></li>{% endif %}
+                {% if wallet_eth %}<li>ETH: <code>{{ wallet_eth }}</code></li>{% endif %}
             </ul>
+            <div id="qr" style="margin-top:10px"></div>
+            <div style="display:flex; gap:8px; margin-top:8px; justify-content:center">
+              {% if wallet_trc20 %}<button type="button" onclick="copyText('{{ wallet_trc20 }}')">Copy TRC20 Address</button>{% endif %}
+              <button type="button" onclick="copyText('{{ price_usdt }}')">Copy Amount</button>
+            </div>
             <p>After payment, contact us or use the key provided to unlock.</p>
         </div>
         <hr>
         <h3>Submit Payment TXID</h3>
         <form method="post" action="/pay">
+            <label>Plan</label>
+            <select name="plan">
+              <option value="one_time">One-time Unlock</option>
+              {% for t in tiers %}
+                <option value="{{ t.id }}">{{ t.name }}</option>
+              {% endfor %}
+            </select>
             <label>Asset</label>
             <input type="text" name="asset" value="USDT (TRC20)" required>
             <label>Amount</label>
-            <input type="text" name="amount" placeholder="Amount" required>
+            <input type="text" name="amount" placeholder="{{ price_usdt or 30 }}" required>
             <label>TXID</label>
             <input type="text" name="txid" placeholder="Transaction ID" required>
             <label>Contact Email (optional)</label>
-            <input type="email" name="contact" placeholder="you@domain.com">
+            <input type="email" name="contact" placeholder="you@domain.com" required>
             <button type="submit">Submit Payment</button>
         </form>
         <hr>
@@ -109,7 +121,53 @@
             <input type="text" name="txid" placeholder="Transaction ID" required>
             <button type="submit">Redeem</button>
         </form>
-        <p><a href="/admin/payments">Admin: Review Payments</a></p>
+        <p><a href="/admin/payments">Admin: Review Payments</a> • <a href="/admin/settings">Settings</a></p>
+        {% if tiers %}
+        <div style="margin-top:16px; text-align:left; font-size:0.95rem">
+          <h3>Plans</h3>
+          <table style="width:100%; border-collapse:collapse">
+            <thead>
+              <tr><th style="text-align:left">Tier</th><th style="text-align:left">Monthly Emails</th><th style="text-align:left">Features</th><th style="text-align:left">Price (USD)</th></tr>
+            </thead>
+            <tbody>
+              {% for t in tiers %}
+                <tr>
+                  <td>{{ t.name }}</td>
+                  <td>{{ t.monthly_emails or t.monthly_domains }}</td>
+                  <td>{{ t.features|join(', ') }}</td>
+                  <td>{{ t.price_usd or t.price_usd_range }}</td>
+                </tr>
+              {% endfor %}
+              <tr>
+                <td>Pay-As-You-Go</td>
+                <td>Over quota</td>
+                <td>Extra 1,000 emails/domains</td>
+                <td>{{ payg_per_1000_usd }} per 1,000</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+        <div id="status" style="margin-top:10px; color:#9fefdf"></div>
     </div>
+    <script>
+      function copyText(t){ try{navigator.clipboard.writeText(t)}catch(e){} }
+      async function pollStatus(){
+        var txid = '{{ pending_txid or '' }}'
+        if(!txid) return
+        try{
+          const r = await fetch('/pay/status/' + encodeURIComponent(txid))
+          if(!r.ok) return
+          const j = await r.json()
+          if(j.verified){
+            document.getElementById('status').textContent = 'Payment verified. Your license: ' + (j.license || '')
+          } else {
+            document.getElementById('status').textContent = 'Awaiting on-chain confirmation...'
+            setTimeout(pollStatus, 7000)
+          }
+        }catch(e){ setTimeout(pollStatus, 10000) }
+      }
+      pollStatus()
+    </script>
 </body>
 </html>
