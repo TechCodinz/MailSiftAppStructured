@@ -1,8 +1,34 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, abort, send_file
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    session,
+    jsonify,
+    abort,
+    send_file,
+)
 import os
-from app import extract_emails_from_text, extract_emails_from_html, group_by_provider, session_increment_scrape_quota, detect_provider, extract_domain, classify_expertise, enrich_meta_for_emails
+from app import (
+    extract_emails_from_text,
+    extract_emails_from_html,
+    group_by_provider,
+    session_increment_scrape_quota,
+    detect_provider,
+    extract_domain,
+    classify_expertise,
+    enrich_meta_for_emails,
+)
 from file_parsing import extract_text_from_file
-from payments import record_payment, get_payment, mark_verified, list_payments, verify_admin_key, verify_trc20_tx_online
+from payments import (
+    record_payment,
+    get_payment,
+    mark_verified,
+    list_payments,
+    verify_admin_key,
+    verify_trc20_tx_online,
+)
 from functools import wraps
 import io
 import csv
@@ -19,8 +45,8 @@ try:
     from flask_limiter.util import get_remote_address
 except Exception:
     Limiter = None
-    def get_remote_address():
-        return request.remote_addr
+    def get_remote_address() -> str:
+        return request.remote_addr or ""
 
 try:
     import sentry_sdk
@@ -34,8 +60,13 @@ app.secret_key = os.environ.get('MAILSIFT_SECRET', 'dev-secret-key')
 # Basic production-hardening defaults (can be overridden via env FLASK_*)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'true').lower() in ('1', 'true', 'yes')
-app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH_MB', '10')) * 1024 * 1024
+app.config['SESSION_COOKIE_SECURE'] = (
+    os.environ.get('SESSION_COOKIE_SECURE', 'true').lower()
+    in ('1', 'true', 'yes')
+)
+app.config['MAX_CONTENT_LENGTH'] = (
+    int(os.environ.get('MAX_CONTENT_LENGTH_MB', '10')) * 1024 * 1024
+)
 
 # Initialize logging
 logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO'))
@@ -45,8 +76,13 @@ logger = logging.getLogger('mailsift')
 if os.environ.get('ENVIRONMENT', 'production').lower() == 'production':
     if app.secret_key in ('dev-secret-key', '', None):
         raise RuntimeError('MAILSIFT_SECRET must be set in production')
-    if (os.environ.get('MAILSIFT_ADMIN_KEY') or 'admin-secret') in ('admin-secret', 'change-me-admin'):
-        raise RuntimeError('MAILSIFT_ADMIN_KEY must be set to a strong value in production')
+    if (
+        (os.environ.get('MAILSIFT_ADMIN_KEY') or 'admin-secret')
+        in ('admin-secret', 'change-me-admin')
+    ):
+        raise RuntimeError(
+            'MAILSIFT_ADMIN_KEY must be set to a strong value in production'
+        )
 
 # Request ID injection
 @app.before_request
@@ -61,26 +97,53 @@ def add_request_id_header(resp):
         resp.headers['X-Request-ID'] = request.request_id
     try:
         dur = (time.time() - getattr(request, '_start_ts', time.time())) * 1000.0
-        logger.info('%s %s %s %0.1fms id=%s ip=%s', request.method, request.path, resp.status_code, dur, request.request_id, request.headers.get('X-Forwarded-For', request.remote_addr))
+        logger.info(
+            '%s %s %s %0.1fms id=%s ip=%s',
+            request.method,
+            request.path,
+            resp.status_code,
+            dur,
+            request.request_id,
+            request.headers.get('X-Forwarded-For', request.remote_addr),
+        )
         HTTP_REQUESTS.labels(request.method, request.path, resp.status_code).inc()
-        HTTP_LATENCY.labels(request.method, request.path).observe(dur/1000.0)
+        HTTP_LATENCY.labels(request.method, request.path).observe(dur / 1000.0)
     except Exception:
         pass
     return resp
 
 # Sentry
 if sentry_sdk and os.environ.get('SENTRY_DSN'):
-    sentry_sdk.init(dsn=os.environ['SENTRY_DSN'], integrations=[FlaskIntegration()], traces_sample_rate=float(os.environ.get('SENTRY_TRACES', '0.0') or 0.0))
+    sentry_sdk.init(
+        dsn=os.environ['SENTRY_DSN'],
+        integrations=[FlaskIntegration()],
+        traces_sample_rate=float(
+            os.environ.get('SENTRY_TRACES', '0.0') or 0.0
+        ),
+    )
 
 # Limiter
 if Limiter:
     storage_uri = os.environ.get('RATELIMIT_STORAGE_URI')
-    limiter = Limiter(get_remote_address, app=app, default_limits=[os.environ.get('GLOBAL_RATE_LIMIT', '120 per minute')], storage_uri=storage_uri)
+    limiter = Limiter(
+        get_remote_address,
+        app=app,
+        default_limits=[os.environ.get('GLOBAL_RATE_LIMIT', '120 per minute')],
+        storage_uri=storage_uri,
+    )
 else:
     limiter = None
 
-HTTP_REQUESTS = Counter('mailsift_http_requests_total', 'HTTP requests', ['method','path','status'])
-HTTP_LATENCY = Histogram('mailsift_http_request_duration_seconds', 'HTTP request latency', ['method','path'])
+HTTP_REQUESTS = Counter(
+    'mailsift_http_requests_total',
+    'HTTP requests',
+    ['method', 'path', 'status'],
+)
+HTTP_LATENCY = Histogram(
+    'mailsift_http_request_duration_seconds',
+    'HTTP request latency',
+    ['method', 'path'],
+)
 
 
 @app.after_request
@@ -90,10 +153,19 @@ def add_security_headers(resp):
     resp.headers.setdefault('X-Frame-Options', 'DENY')
     resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
     # Allow inline styles/scripts used in templates
-    csp = "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; script-src 'self' 'unsafe-inline'"
+    csp = (
+        "default-src 'self'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        "script-src 'self' 'unsafe-inline'"
+    )
     resp.headers.setdefault('Content-Security-Policy', csp)
     if request.scheme == 'https':
-        resp.headers.setdefault('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
+        resp.headers.setdefault(
+            'Strict-Transport-Security',
+            'max-age=63072000; includeSubDomains; preload',
+        )
     return resp
 
 
@@ -104,12 +176,20 @@ def admin_auth_required(f):
         # IP allowlist (optional)
         allowed = (os.environ.get('ADMIN_IP_ALLOWLIST') or '').strip()
         if allowed:
-            ip = request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0].strip()
+            ip = (
+                request.headers.get('X-Forwarded-For', request.remote_addr or '')
+                .split(',')[0]
+                .strip()
+            )
             allow = {x.strip() for x in allowed.split(',') if x.strip()}
             if ip not in allow:
                 return jsonify({'error': 'forbidden'}), 403
         # Support either simple key header or HTTP basic auth
-        key = request.args.get('key') or request.form.get('key') or request.headers.get('X-Admin-Key')
+        key = (
+            request.args.get('key')
+            or request.form.get('key')
+            or request.headers.get('X-Admin-Key')
+        )
         if not key:
             # try basic auth
             auth = request.authorization
@@ -128,30 +208,46 @@ def index():
     if 'extracted' in session:
         extracted = session.get('extracted', [])
         meta = session.get('meta', {})
-        results = {'valid': group_by_provider(extracted), 'meta': meta, 'invalid': session.get('invalid', [])}
+        results = {
+            'valid': group_by_provider(extracted),
+            'meta': meta,
+            'invalid': session.get('invalid', []),
+        }
     return render_template('index.html', results=results)
+
+
+def get_wallets() -> dict:
+    return {
+        'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+        'trc20': (
+            os.environ.get('MAILSIFT_WALLET_TRC20')
+            or os.environ.get('MAILSIFT_RECEIVE_ADDRESS')
+        ),
+        'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+    }
 
 
 @app.route('/paywall')
 def paywall():
-    return render_template('paywall.html', wallets={
-        'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-        'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-        'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-    })
+    return render_template('paywall.html', wallets=get_wallets())
 
 
 @app.route('/scrape', methods=['POST'])
-@limiter.limit(os.environ.get('SCRAPE_RATE_LIMIT', '20/minute') if limiter else None)  # type: ignore[arg-type]
+@limiter.limit(
+    os.environ.get('SCRAPE_RATE_LIMIT', '20/minute') if limiter else None
+)  # type: ignore[arg-type]
 def scrape():
     # Enforce free quota limit unless unlocked
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
-    if not session.get('unlocked') and session.get('scrape_quota', 0) >= free_limit:
-        return render_template('paywall.html', error='Free quota reached. Please unlock to continue.', wallets={
-            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-        })
+    if (
+        not session.get('unlocked')
+        and session.get('scrape_quota', 0) >= free_limit
+    ):
+        return render_template(
+            'paywall.html',
+            error='Free quota reached. Please unlock to continue.',
+            wallets=get_wallets(),
+        )
     # support text input, file upload, or one/multiple URLs
     text = ''
     if 'text_input' in request.form and request.form['text_input'].strip():
@@ -236,7 +332,13 @@ def scrape():
         by_category.setdefault(cat, []).append(e)
     # hero metrics
     total_count = len(emails_all)
-    unique_domains = len(set(extract_domain(e) for e in emails_all if extract_domain(e)))
+    unique_domains = len(
+        set(
+            extract_domain(e)
+            for e in emails_all
+            if extract_domain(e)
+        )
+    )
     categories_present = len(by_category)
     results = {
         'valid': provider_groups,
@@ -255,11 +357,16 @@ def scrape():
 
 
 @app.route('/pay', methods=['POST'])
-@limiter.limit(os.environ.get('PAY_RATE_LIMIT', '5/minute') if limiter else None)  # type: ignore[arg-type]
+@limiter.limit(
+    os.environ.get('PAY_RATE_LIMIT', '5/minute') if limiter else None
+)  # type: ignore[arg-type]
 def pay():
     if request.method == 'POST':
         txid = (request.form.get('txid') or '').strip()
-        address = (request.form.get('contact') or request.form.get('address') or '').strip()
+        address = (
+            (request.form.get('contact') or request.form.get('address') or '')
+            .strip()
+        )
         contact = (request.form.get('contact') or '').strip()
         asset = (request.form.get('asset') or '').strip()
         amt_raw = (request.form.get('amount') or '').strip()
@@ -268,25 +375,28 @@ def pay():
         except Exception:
             amount = 0.0
         if not txid or not address:
-            return render_template('paywall.html', error='txid and address required', wallets={
-                'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-                'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-                'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-            })
+            return render_template(
+                'paywall.html',
+                error='txid and address required',
+                wallets=get_wallets(),
+            )
         # minimal txid sanity check and duplicate guard
         if len(txid) < 8 or len(txid) > 128:
-            return render_template('paywall.html', error='Invalid TXID format', wallets={
-                'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-                'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-                'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-            })
+            return render_template(
+                'paywall.html',
+                error='Invalid TXID format',
+                wallets=get_wallets(),
+            )
         data = list_payments()
         if txid in data:
-            return render_template('paywall.html', error='This TXID is already submitted. Await verification or redeem.', wallets={
-                'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-                'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-                'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-            })
+            return render_template(
+                'paywall.html',
+                error=(
+                    'This TXID is already submitted. '
+                    'Await verification or redeem.'
+                ),
+                wallets=get_wallets(),
+            )
         rec = record_payment(txid, address, amount)
         # attach contact if provided
         if txid in data and contact:
@@ -296,11 +406,12 @@ def pay():
             # save back
             from payments import _save_payments
             _save_payments(data)
-        return render_template('paywall.html', error='Payment received. Awaiting verification. TXID: ' + str(txid), wallets={
-            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-        })
+        error_msg = f'Payment received. Awaiting verification. TXID: {txid}'
+        return render_template(
+            'paywall.html',
+            error=error_msg,
+            wallets=get_wallets(),
+        )
     return render_template('paywall.html')
 
 
@@ -311,16 +422,16 @@ def redeem():
     for txid, info in payments.items():
         if info.get('license') == key or txid == key:
             session['unlocked'] = True
-            return render_template('paywall.html', error='Unlocked. License applied.', wallets={
-                'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-                'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-                'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-            })
-    return render_template('paywall.html', error='Invalid license or txid', wallets={
-        'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-        'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-        'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-    })
+            return render_template(
+                'paywall.html',
+                error='Unlocked. License applied.',
+                wallets=get_wallets(),
+            )
+    return render_template(
+        'paywall.html',
+        error='Invalid license or txid',
+        wallets=get_wallets(),
+    )
 
 
 @app.route('/unlock', methods=['POST'])
@@ -331,28 +442,30 @@ def unlock():
     for txid, info in payments.items():
         if info.get('license') == key:
             session['unlocked'] = True
-            return render_template('paywall.html', error='Unlocked. License applied.', wallets={
-                'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-                'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-                'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-            })
+            return render_template(
+                'paywall.html',
+                error='Unlocked. License applied.',
+                wallets=get_wallets(),
+            )
     # Dev bypass for local testing
     if key == 'LET-ME-IN-DEV':
         session['unlocked'] = True
-        return render_template('paywall.html', error='Unlocked (dev).', wallets={
-            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-        })
-    return render_template('paywall.html', error='Invalid license key', wallets={
-        'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-        'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-        'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-    })
+        return render_template(
+            'paywall.html',
+            error='Unlocked (dev).',
+            wallets=get_wallets(),
+        )
+    return render_template(
+        'paywall.html',
+        error='Invalid license key',
+        wallets=get_wallets(),
+    )
 
 
 @app.route('/admin/payments', methods=['GET', 'POST'])
-@limiter.limit(os.environ.get('ADMIN_RATE_LIMIT', '60/minute') if limiter else None)  # type: ignore[arg-type]
+@limiter.limit(
+    os.environ.get('ADMIN_RATE_LIMIT', '60/minute') if limiter else None
+)  # type: ignore[arg-type]
 @admin_auth_required
 def admin_payments():
     # Render the admin payments template with a list of payment records
@@ -372,12 +485,15 @@ def admin_payments():
 def download():
     # Gate downloads if past free quota and not unlocked
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
-    if not session.get('unlocked') and session.get('scrape_quota', 0) >= free_limit:
-        return render_template('paywall.html', error='Please unlock to download results.', wallets={
-            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-        })
+    if (
+        not session.get('unlocked')
+        and session.get('scrape_quota', 0) >= free_limit
+    ):
+        return render_template(
+            'paywall.html',
+            error='Please unlock to download results.',
+            wallets=get_wallets(),
+        )
     emails = session.get('extracted')
     if not emails:
         return redirect(url_for('index'))
@@ -388,18 +504,26 @@ def download():
         cw.writerow([e])
     mem = io.BytesIO(si.getvalue().encode('utf-8'))
     mem.seek(0)
-    return send_file(mem, mimetype='text/csv', as_attachment=True, download_name='extracted_emails.csv')
+    return send_file(
+        mem,
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name='extracted_emails.csv',
+    )
 
 
 @app.route('/download/by-domain.csv')
 def download_by_domain():
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
-    if not session.get('unlocked') and session.get('scrape_quota', 0) >= free_limit:
-        return render_template('paywall.html', error='Please unlock to download results.', wallets={
-            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-        })
+    if (
+        not session.get('unlocked')
+        and session.get('scrape_quota', 0) >= free_limit
+    ):
+        return render_template(
+            'paywall.html',
+            error='Please unlock to download results.',
+            wallets=get_wallets(),
+        )
     emails = session.get('extracted') or []
     if not emails:
         return redirect(url_for('index'))
@@ -410,18 +534,26 @@ def download_by_domain():
         cw.writerow([extract_domain(e), e])
     mem = io.BytesIO(si.getvalue().encode('utf-8'))
     mem.seek(0)
-    return send_file(mem, mimetype='text/csv', as_attachment=True, download_name='emails_by_domain.csv')
+    return send_file(
+        mem,
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name='emails_by_domain.csv',
+    )
 
 
 @app.route('/download/by-category.csv')
 def download_by_category():
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
-    if not session.get('unlocked') and session.get('scrape_quota', 0) >= free_limit:
-        return render_template('paywall.html', error='Please unlock to download results.', wallets={
-            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-        })
+    if (
+        not session.get('unlocked')
+        and session.get('scrape_quota', 0) >= free_limit
+    ):
+        return render_template(
+            'paywall.html',
+            error='Please unlock to download results.',
+            wallets=get_wallets(),
+        )
     emails = session.get('extracted') or []
     if not emails:
         return redirect(url_for('index'))
@@ -432,18 +564,26 @@ def download_by_category():
         cw.writerow([classify_expertise(e), e])
     mem = io.BytesIO(si.getvalue().encode('utf-8'))
     mem.seek(0)
-    return send_file(mem, mimetype='text/csv', as_attachment=True, download_name='emails_by_category.csv')
+    return send_file(
+        mem,
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name='emails_by_category.csv',
+    )
 
 
 @app.route('/download/json')
 def download_json():
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
-    if not session.get('unlocked') and session.get('scrape_quota', 0) >= free_limit:
-        return render_template('paywall.html', error='Please unlock to download results.', wallets={
-            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-        })
+    if (
+        not session.get('unlocked')
+        and session.get('scrape_quota', 0) >= free_limit
+    ):
+        return render_template(
+            'paywall.html',
+            error='Please unlock to download results.',
+            wallets=get_wallets(),
+        )
     emails = session.get('extracted')
     meta = session.get('meta', {})
     if not emails:
@@ -455,18 +595,26 @@ def download_json():
         payload.append(item)
     mem = io.BytesIO(json.dumps(payload, indent=2).encode('utf-8'))
     mem.seek(0)
-    return send_file(mem, mimetype='application/json', as_attachment=True, download_name='extracted_emails.json')
+    return send_file(
+        mem,
+        mimetype='application/json',
+        as_attachment=True,
+        download_name='extracted_emails.json',
+    )
 
 
 @app.route('/download/excel')
 def download_excel():
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
-    if not session.get('unlocked') and session.get('scrape_quota', 0) >= free_limit:
-        return render_template('paywall.html', error='Please unlock to download results.', wallets={
-            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-        })
+    if (
+        not session.get('unlocked')
+        and session.get('scrape_quota', 0) >= free_limit
+    ):
+        return render_template(
+            'paywall.html',
+            error='Please unlock to download results.',
+            wallets=get_wallets(),
+        )
     emails = session.get('extracted') or []
     meta = session.get('meta', {})
     if not emails:
@@ -482,7 +630,12 @@ def download_excel():
             cw.writerow([e, detect_provider(e)])
         mem = io.BytesIO(si.getvalue().encode('utf-8'))
         mem.seek(0)
-        return send_file(mem, mimetype='text/csv', as_attachment=True, download_name='extracted_emails.csv')
+        return send_file(
+            mem,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name='extracted_emails.csv',
+        )
 
     wb = Workbook()
     ws = wb.active
@@ -501,7 +654,14 @@ def download_excel():
     wb.save(buf)
     buf.seek(0)
     ts = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
-    return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=f'extracted_emails_{ts}.xlsx')
+    return send_file(
+        buf,
+        mimetype=(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        ),
+        as_attachment=True,
+        download_name=f'extracted_emails_{ts}.xlsx',
+    )
 
 
 @app.route('/reset')
@@ -547,7 +707,10 @@ def admin_verify_online():
     if ok:
         info = mark_verified(txid, verifier='trc20-auto')
         return jsonify({'ok': True, 'payment': info})
-    return jsonify({'ok': False, 'error': 'not found or not confirmed on chain'}), 404
+    return (
+        jsonify({'ok': False, 'error': 'not found or not confirmed on chain'}),
+        404,
+    )
 
 
 if __name__ == '__main__':
