@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MailSift Ultra - AI-Powered Email Intelligence Platform</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #10b981;
+            --accent: #f59e0b;
+            --dark: #111827;
+            --light: #f9fafb;
+            --gray: #6b7280;
+            --success: #10b981;
+            --danger: #ef4444;
+            --gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            color: #fff;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        .header {
+            padding: 20px 0;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 800;
+            background: var(--gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 30px;
+            align-items: center;
+        }
+
+        .nav-link {
+            color: #fff;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .nav-link:hover {
+            color: var(--primary);
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: var(--gradient);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 80px 0;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-size: 64px;
+            font-weight: 800;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #fff 0%, #a78bfa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            line-height: 1.2;
+        }
+
+        .hero p {
+            font-size: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 40px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 60px;
+            margin: 60px 0;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 48px;
+            font-weight: 800;
+            background: var(--gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-label {
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 10px;
+        }
+
+        /* Email Extraction Form */
+        .extraction-box {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 40px;
+            margin: 40px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .tab-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+
+        .tab-btn {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .tab-btn.active {
+            background: var(--gradient);
+            border-color: transparent;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            color: white;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        textarea.input-field {
+            min-height: 150px;
+            resize: vertical;
+        }
+
+        .file-upload {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-upload input[type="file"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-upload-label {
+            display: block;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .file-upload-label:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--primary);
+        }
+
+        .extract-btn {
+            width: 100%;
+            padding: 18px;
+            font-size: 18px;
+            background: var(--gradient);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            margin-top: 20px;
+        }
+
+        .extract-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.4);
+        }
+
+        /* Features Section */
+        .features {
+            padding: 80px 0;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 50px;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary);
+            box-shadow: 0 20px 40px rgba(99, 102, 241, 0.2);
+        }
+
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            background: var(--gradient);
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin-bottom: 20px;
+        }
+
+        .feature-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .feature-desc {
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.6;
+        }
+
+        /* Pricing Section */
+        .pricing {
+            padding: 80px 0;
+        }
+
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-top: 50px;
+        }
+
+        .pricing-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 40px 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .pricing-card.popular {
+            border-color: var(--primary);
+            transform: scale(1.05);
+        }
+
+        .popular-badge {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--gradient);
+            color: white;
+            padding: 5px 20px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .pricing-tier {
+            font-size: 14px;
+            color: var(--primary);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .pricing-price {
+            font-size: 48px;
+            font-weight: 800;
+            margin: 20px 0;
+        }
+
+        .pricing-period {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .pricing-features {
+            list-style: none;
+            margin: 30px 0;
+        }
+
+        .pricing-feature {
+            padding: 10px 0;
+            color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .pricing-feature::before {
+            content: "✓";
+            color: var(--success);
+            font-weight: bold;
+        }
+
+        /* Results Section */
+        .results {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 40px;
+            margin: 40px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .results-title {
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .results-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .email-list {
+            display: grid;
+            gap: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .email-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s;
+        }
+
+        .email-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .email-address {
+            font-family: monospace;
+            font-size: 14px;
+        }
+
+        .email-badges {
+            display: flex;
+            gap: 8px;
+        }
+
+        .badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-valid {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+
+        .badge-risk-low {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+
+        .badge-risk-high {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        /* Loading Animation */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 36px;
+            }
+            
+            .stats {
+                flex-direction: column;
+                gap: 30px;
+            }
+            
+            .pricing-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <nav class="nav">
+                <div class="logo">
+                    <span>⚡</span>
+                    <span>MailSift Ultra</span>
+                </div>
+                <div class="nav-links">
+                    <a href="#features" class="nav-link">Features</a>
+                    <a href="#pricing" class="nav-link">Pricing</a>
+                    <a href="/api/docs" class="nav-link">API</a>
+                    <a href="/dashboard" class="nav-link">Dashboard</a>
+                    {% if subscription %}
+                        <span class="badge" style="background: var(--gradient); padding: 8px 16px; border-radius: 20px;">
+                            {{ subscription.tier|upper }}
+                        </span>
+                    {% else %}
+                        <a href="#pricing" class="btn btn-primary">Get Started</a>
+                    {% endif %}
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <h1>Extract & Analyze Emails<br>with AI Intelligence</h1>
+            <p>The most advanced email extraction platform powered by artificial intelligence. Extract, validate, enrich, and analyze emails at scale.</p>
+            
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-number">1M+</div>
+                    <div class="stat-label">Emails Processed</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">99.9%</div>
+                    <div class="stat-label">Accuracy Rate</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">50ms</div>
+                    <div class="stat-label">Avg Response Time</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Email Extraction Form -->
+    <section class="container">
+        <div class="extraction-box">
+            <div class="tab-buttons">
+                <button class="tab-btn active" onclick="showTab('text')">📝 Text/HTML</button>
+                <button class="tab-btn" onclick="showTab('url')">🌐 URLs</button>
+                <button class="tab-btn" onclick="showTab('file')">📁 File Upload</button>
+            </div>
+
+            <form id="extractForm" onsubmit="extractEmails(event)">
+                <!-- Text Input Tab -->
+                <div id="text-tab" class="tab-content">
+                    <div class="input-group">
+                        <label class="input-label">Paste your text or HTML content</label>
+                        <textarea class="input-field" name="text_input" placeholder="Paste any text containing emails..."></textarea>
+                    </div>
+                </div>
+
+                <!-- URL Input Tab -->
+                <div id="url-tab" class="tab-content" style="display: none;">
+                    <div class="input-group">
+                        <label class="input-label">Enter URLs to scrape (one per line)</label>
+                        <textarea class="input-field" name="urls" placeholder="https://example.com&#10;https://another-site.com"></textarea>
+                    </div>
+                </div>
+
+                <!-- File Upload Tab -->
+                <div id="file-tab" class="tab-content" style="display: none;">
+                    <div class="input-group">
+                        <div class="file-upload">
+                            <input type="file" id="file_input" name="file_input" accept=".txt,.csv,.pdf,.docx,.xlsx">
+                            <label for="file_input" class="file-upload-label">
+                                <div style="font-size: 48px; margin-bottom: 10px;">📤</div>
+                                <div style="font-weight: 600; margin-bottom: 5px;">Drop files here or click to upload</div>
+                                <div style="color: rgba(255,255,255,0.6); font-size: 14px;">Supports TXT, CSV, PDF, DOCX, XLSX</div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="extract-btn">
+                    🚀 Extract & Analyze Emails
+                </button>
+            </form>
+
+            <!-- Loading State -->
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <div>Analyzing emails with AI intelligence...</div>
+            </div>
+
+            <!-- Results -->
+            <div id="results" class="results" style="display: none;">
+                <div class="results-header">
+                    <h3 class="results-title">Extracted Emails</h3>
+                    <div class="results-actions">
+                        <button class="btn btn-primary" onclick="downloadCSV()">📥 CSV</button>
+                        <button class="btn btn-primary" onclick="downloadJSON()">📄 JSON</button>
+                        <button class="btn btn-primary" onclick="copyAll()">📋 Copy All</button>
+                    </div>
+                </div>
+                <div id="email-list" class="email-list"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features">
+        <div class="container">
+            <h2 style="text-align: center; font-size: 48px; margin-bottom: 20px;">Powerful Features</h2>
+            <p style="text-align: center; color: rgba(255,255,255,0.7); max-width: 600px; margin: 0 auto;">Everything you need to extract, validate, and enrich email data at scale</p>
+            
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🤖</div>
+                    <h3 class="feature-title">AI Intelligence</h3>
+                    <p class="feature-desc">Advanced AI analyzes context, intent, sentiment, and categorizes emails automatically</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">✅</div>
+                    <h3 class="feature-title">Smart Validation</h3>
+                    <p class="feature-desc">Real-time email validation with deliverability scoring and risk assessment</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔍</div>
+                    <h3 class="feature-title">Data Enrichment</h3>
+                    <p class="feature-desc">Enrich emails with social profiles, company data, and contact information</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3 class="feature-title">Bulk Processing</h3>
+                    <p class="feature-desc">Process millions of emails with async jobs and real-time progress tracking</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔌</div>
+                    <h3 class="feature-title">API Access</h3>
+                    <p class="feature-desc">Powerful REST API with webhooks for seamless integration</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3 class="feature-title">Analytics</h3>
+                    <p class="feature-desc">Detailed analytics and insights to optimize your email campaigns</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section id="pricing" class="pricing">
+        <div class="container">
+            <h2 style="text-align: center; font-size: 48px; margin-bottom: 20px;">Simple, Transparent Pricing</h2>
+            <p style="text-align: center; color: rgba(255,255,255,0.7); max-width: 600px; margin: 0 auto;">Choose the perfect plan for your needs. Upgrade or downgrade anytime.</p>
+            
+            <div class="pricing-grid">
+                {% for plan in pricing %}
+                <div class="pricing-card {% if plan.popular %}popular{% endif %}">
+                    {% if plan.popular %}
+                    <div class="popular-badge">MOST POPULAR</div>
+                    {% endif %}
+                    <div class="pricing-tier">{{ plan.name }}</div>
+                    <div class="pricing-price">
+                        ${{ plan.price_monthly }}
+                        <span class="pricing-period">/month</span>
+                    </div>
+                    <ul class="pricing-features">
+                        <li class="pricing-feature">{{ plan.limits.monthly_emails|default('Unlimited') }} emails/month</li>
+                        <li class="pricing-feature">{{ plan.limits.daily_requests|default('Unlimited') }} API requests/day</li>
+                        {% if plan.features.ai_intelligence %}
+                        <li class="pricing-feature">AI Intelligence</li>
+                        {% endif %}
+                        {% if plan.features.bulk_processing %}
+                        <li class="pricing-feature">Bulk Processing</li>
+                        {% endif %}
+                        {% if plan.features.enrichment %}
+                        <li class="pricing-feature">Data Enrichment</li>
+                        {% endif %}
+                        {% if plan.features.priority_support %}
+                        <li class="pricing-feature">Priority Support</li>
+                        {% endif %}
+                    </ul>
+                    <button class="btn btn-primary" style="width: 100%;" onclick="subscribe('{{ plan.tier }}')">
+                        Get Started
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+
+    <script>
+        function showTab(tab) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            
+            // Show selected tab
+            document.getElementById(tab + '-tab').style.display = 'block';
+            event.target.classList.add('active');
+        }
+
+        async function extractEmails(event) {
+            event.preventDefault();
+            
+            const form = document.getElementById('extractForm');
+            const formData = new FormData(form);
+            
+            // Show loading
+            document.getElementById('loading').classList.add('active');
+            document.getElementById('results').style.display = 'none';
+            
+            try {
+                const response = await fetch('/extract', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayResults(data);
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            } finally {
+                document.getElementById('loading').classList.remove('active');
+            }
+        }
+
+        function displayResults(data) {
+            const resultsDiv = document.getElementById('results');
+            const emailList = document.getElementById('email-list');
+            
+            emailList.innerHTML = '';
+            
+            data.emails.forEach((email, index) => {
+                const intelligence = data.intelligence[index] || {};
+                
+                const emailItem = document.createElement('div');
+                emailItem.className = 'email-item';
+                
+                const riskClass = intelligence.risk > 50 ? 'risk-high' : 'risk-low';
+                
+                emailItem.innerHTML = `
+                    <span class="email-address">${email}</span>
+                    <div class="email-badges">
+                        ${intelligence.deliverability ? `<span class="badge badge-valid">✓ ${intelligence.deliverability}%</span>` : ''}
+                        ${intelligence.risk !== undefined ? `<span class="badge badge-${riskClass}">Risk: ${intelligence.risk}%</span>` : ''}
+                        ${intelligence.type ? `<span class="badge">${intelligence.type}</span>` : ''}
+                    </div>
+                `;
+                
+                emailList.appendChild(emailItem);
+            });
+            
+            resultsDiv.style.display = 'block';
+            
+            // Store results for download
+            window.extractedEmails = data.emails;
+            window.emailIntelligence = data.intelligence;
+        }
+
+        function downloadCSV() {
+            if (!window.extractedEmails) return;
+            
+            let csv = 'Email,Deliverability,Risk,Type\n';
+            window.extractedEmails.forEach((email, index) => {
+                const intel = window.emailIntelligence[index] || {};
+                csv += `"${email}",${intel.deliverability || ''},${intel.risk || ''},${intel.type || ''}\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'emails.csv';
+            a.click();
+        }
+
+        function downloadJSON() {
+            if (!window.extractedEmails) return;
+            
+            const data = window.extractedEmails.map((email, index) => ({
+                email,
+                ...window.emailIntelligence[index]
+            }));
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'emails.json';
+            a.click();
+        }
+
+        function copyAll() {
+            if (!window.extractedEmails) return;
+            
+            const text = window.extractedEmails.join('\n');
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Copied ' + window.extractedEmails.length + ' emails to clipboard!');
+            });
+        }
+
+        async function subscribe(tier) {
+            const email = prompt('Enter your email to get started:');
+            if (!email) return;
+            
+            try {
+                const response = await fetch('/subscribe', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email,
+                        tier,
+                        billing_period: 'monthly'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    if (data.checkout_url) {
+                        window.location.href = data.checkout_url;
+                    } else {
+                        alert('Success! Your API key: ' + data.api_key);
+                        window.location.href = '/dashboard';
+                    }
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

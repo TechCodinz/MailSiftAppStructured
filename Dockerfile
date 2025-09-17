@@ -1,31 +1,36 @@
-# syntax=docker/dockerfile:1
 FROM python:3.11-slim
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-# System deps for pdf/image extras
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
     build-essential \
-    tesseract-ocr \
     poppler-utils \
-    libmagic1 \
+    tesseract-ocr \
+    postgresql-client \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt requirements.txt
-RUN pip install -r requirements.txt
+# Copy requirements first for better caching
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application code
 COPY . .
 
-# Default envs
-ENV FREE_SCRAPE_QUOTA=3 \
-    SESSION_COOKIE_SECURE=true \
-    ENVIRONMENT=production
+# Create directories for data and logs
+RUN mkdir -p /app/data /app/logs
 
-EXPOSE 8000
+# Create non-root user
+RUN useradd -m -u 1000 mailsift && chown -R mailsift:mailsift /app
+USER mailsift
 
-CMD ["gunicorn", "server:app", "--bind=0.0.0.0:8000", "--workers=2", "--threads=4", "--timeout=60"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:5000/api/v2/health || exit 1
 
+# Expose port
+EXPOSE 5000
+
+# Run with gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--threads", "2", "--timeout", "120", "--access-logfile", "/app/logs/access.log", "--error-logfile", "/app/logs/error.log", "server_v2:app"]
