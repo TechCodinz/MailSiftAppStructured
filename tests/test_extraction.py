@@ -1,5 +1,4 @@
 from app import extract_emails_from_text
-from typing import Any
 
 
 def test_simple_extraction() -> None:

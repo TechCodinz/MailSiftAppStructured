@@ -32,7 +32,7 @@ def normalize_deobfuscate(text: str) -> str:
     return s.strip()
 
 
-def extract_emails_from_text(text: str) -> tuple[list[str], list[str]]:
+def extract_emails_from_text(text: str) -> tuple[list[str], list[str]]:  # noqa: C901
     if not text:
         return [], []
     cleaned = normalize_deobfuscate(text)
@@ -271,7 +271,7 @@ def enrich_meta_for_emails(
         # mx check
         if validate_email and 'mx' not in m:
             try:
-                res = validate_email(e, check_deliverability=True)
+                validate_email(e, check_deliverability=True)
                 # if no exception, DNS/MX is ok
                 m['mx'] = 'ok'
             except EmailNotValidError:

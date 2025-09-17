@@ -36,7 +36,8 @@ from datetime import datetime
 import logging
 import uuid
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
-from typing import Any, Callable
+from typing import Callable
+from flask.wrappers import Response
 
 try:
     from flask_limiter import Limiter
@@ -90,7 +91,7 @@ def add_request_id() -> None:
     request._start_ts = time.time()
 
 @app.after_request
-def add_request_id_header(resp: Any) -> Any:
+def add_request_id_header(resp: Response) -> Response:
     if hasattr(request, 'request_id'):
         resp.headers['X-Request-ID'] = request.request_id
     try:
@@ -145,7 +146,7 @@ HTTP_LATENCY = Histogram(
 
 
 @app.after_request
-def add_security_headers(resp: Any) -> Any:
+def add_security_headers(resp: Response) -> Response:
     # Minimal safe headers; adjust CSP as needed if you add external scripts
     resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
     resp.headers.setdefault('X-Frame-Options', 'DENY')
@@ -167,9 +168,9 @@ def add_security_headers(resp: Any) -> Any:
     return resp
 
 
-def admin_auth_required(f: Callable[..., Any]) -> Callable[..., Any]:
+def admin_auth_required(f: Callable[..., Response]) -> Callable[..., Response]:
     @wraps(f)
-    def inner(*args: Any, **kwargs: Any) -> Any:
+    def inner(*args: object, **kwargs: object) -> Response:
         # IP allowlist (optional)
         allowed = (os.environ.get('ADMIN_IP_ALLOWLIST') or '').strip()
         if allowed:
@@ -199,7 +200,7 @@ def admin_auth_required(f: Callable[..., Any]) -> Callable[..., Any]:
 
 
 @app.route('/')
-def index() -> Any:
+def index() -> Response | str:
     # show any current session results
     results = None
     if 'extracted' in session:
@@ -225,7 +226,7 @@ def get_wallets() -> dict:
 
 
 @app.route('/paywall')
-def paywall() -> Any:
+def paywall() -> Response | str:
     return render_template('paywall.html', wallets=get_wallets())
 
 
@@ -233,7 +234,7 @@ def paywall() -> Any:
 @limiter.limit(
     os.environ.get('SCRAPE_RATE_LIMIT', '20/minute') if limiter else None
 )  # type: ignore[arg-type]
-def scrape() -> Any:
+def scrape() -> Response | str:
     # Enforce free quota limit unless unlocked
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
     if (
@@ -355,7 +356,7 @@ def scrape() -> Any:
 @limiter.limit(
     os.environ.get('PAY_RATE_LIMIT', '5/minute') if limiter else None
 )  # type: ignore[arg-type]
-def pay() -> Any:
+def pay() -> Response | str:
     if request.method == 'POST':
         txid = (request.form.get('txid') or '').strip()
         address = (
@@ -411,7 +412,7 @@ def pay() -> Any:
 
 
 @app.route('/redeem', methods=['POST'])
-def redeem() -> Any:
+def redeem() -> Response | str:
     key = request.form.get('license') or request.form.get('txid')
     payments = list_payments()
     for txid, info in payments.items():
@@ -430,7 +431,7 @@ def redeem() -> Any:
 
 
 @app.route('/unlock', methods=['POST'])
-def unlock() -> Any:
+def unlock() -> Response | str:
     # Accept license key from paywall form and unlock if matches an issued license
     key = (request.form.get('license_key') or '').strip()
     payments = list_payments()
@@ -462,7 +463,7 @@ def unlock() -> Any:
     os.environ.get('ADMIN_RATE_LIMIT', '60/minute') if limiter else None
 )  # type: ignore[arg-type]
 @admin_auth_required
-def admin_payments() -> Any:
+def admin_payments() -> Response | str:
     # Render the admin payments template with a list of payment records
     payments = list_payments()
     # payments stored as dict keyed by txid -> convert to list for template
@@ -477,7 +478,7 @@ def admin_payments() -> Any:
 
 
 @app.route('/download')
-def download() -> Any:
+def download() -> Response:
     # Gate downloads if past free quota and not unlocked
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
     if (
@@ -508,7 +509,7 @@ def download() -> Any:
 
 
 @app.route('/download/by-domain.csv')
-def download_by_domain() -> Any:
+def download_by_domain() -> Response:
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
     if (
         not session.get('unlocked')
@@ -538,7 +539,7 @@ def download_by_domain() -> Any:
 
 
 @app.route('/download/by-category.csv')
-def download_by_category() -> Any:
+def download_by_category() -> Response:
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
     if (
         not session.get('unlocked')
@@ -568,7 +569,7 @@ def download_by_category() -> Any:
 
 
 @app.route('/download/json')
-def download_json() -> Any:
+def download_json() -> Response:
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
     if (
         not session.get('unlocked')
@@ -599,7 +600,7 @@ def download_json() -> Any:
 
 
 @app.route('/download/excel')
-def download_excel() -> Any:
+def download_excel() -> Response:
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
     if (
         not session.get('unlocked')
@@ -660,7 +661,7 @@ def download_excel() -> Any:
 
 
 @app.route('/reset')
-def reset() -> Any:
+def reset() -> Response:
     # Clear user session data to reset license and results
     for k in ['extracted', 'invalid', 'meta', 'unlocked', 'scrape_quota']:
         try:
@@ -671,18 +672,18 @@ def reset() -> Any:
 
 
 @app.route('/healthz')
-def healthz() -> Any:
+def healthz() -> Response:
     return jsonify({'ok': True}), 200
 
 
 @app.route('/metrics')
-def metrics() -> Any:
+def metrics() -> tuple[bytes, int, dict[str, str]]:
     return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
 
 
 @app.route('/admin/payments/verify', methods=['POST'])
 @admin_auth_required
-def admin_verify() -> Any:
+def admin_verify() -> Response:
     txid = request.form.get('txid')
     if not txid:
         return jsonify({'error': 'txid required'}), 400
@@ -694,7 +695,7 @@ def admin_verify() -> Any:
 
 @app.route('/admin/payments/verify-online', methods=['POST'])
 @admin_auth_required
-def admin_verify_online() -> Any:
+def admin_verify_online() -> Response:
     txid = request.form.get('txid')
     if not txid:
         return jsonify({'error': 'txid required'}), 400

@@ -35,14 +35,24 @@ def _load_payments() -> Dict[str, Dict[str, Any]]:
                     'asset TEXT)'
                 )
                 rows = conn.execute(
-                    'SELECT txid,address,amount,timestamp,verified,license,contact,verified_by,verified_at,asset FROM payments'
+                    'SELECT '
+                    'txid,address,amount,timestamp,verified,license,'
+                    'contact,verified_by,verified_at,asset '
+                    'FROM payments'
                 ).fetchall()
                 out = {}
                 for r in rows:
                     out[r[0]] = {
-                        'txid': r[0], 'address': r[1], 'amount': r[2], 'timestamp': r[3],
-                        'verified': bool(r[4]), 'license': r[5], 'contact': r[6],
-                        'verified_by': r[7], 'verified_at': r[8], 'asset': r[9]
+                        'txid': r[0],
+                        'address': r[1],
+                        'amount': r[2],
+                        'timestamp': r[3],
+                        'verified': bool(r[4]),
+                        'license': r[5],
+                        'contact': r[6],
+                        'verified_by': r[7],
+                        'verified_at': r[8],
+                        'asset': r[9],
                     }
                 return out
         except Exception:
@@ -98,7 +108,9 @@ def _save_payments(data: Dict[str, Dict[str, Any]]) -> None:
     # Atomic write with file lock and audit shadow
     dirpath = os.path.dirname(PAYMENTS_FILE)
     os.makedirs(dirpath, exist_ok=True)
-    temp_fd, temp_path = tempfile.mkstemp(dir=dirpath, prefix='payments.', suffix='.tmp')
+    temp_fd, temp_path = tempfile.mkstemp(
+        dir=dirpath, prefix='payments.', suffix='.tmp'
+    )
     try:
         with os.fdopen(temp_fd, 'w', encoding='utf-8') as tf:
             json.dump(data, tf, indent=2)
@@ -119,7 +131,13 @@ def _save_payments(data: Dict[str, Dict[str, Any]]) -> None:
         try:
             audit_path = os.path.join(dirpath, 'payments_audit.log')
             with open(audit_path, 'a', encoding='utf-8') as af:
-                af.write(json.dumps({'ts': int(time.time()), 'event': 'save', 'count': len(data)}) + '\n')
+                af.write(
+                    json.dumps({
+                        'ts': int(time.time()),
+                        'event': 'save',
+                        'count': len(data),
+                    }) + '\n'
+                )
         except Exception:
             pass
     finally:
@@ -205,7 +223,11 @@ def list_payments() -> Dict[str, Dict[str, Any]]:
 def generate_license_for(txid: str) -> str:
     # HMAC-SHA256 of txid + timestamp
     ts = str(int(time.time()))
-    mac = hmac.new(SECRET.encode('utf-8'), f"{txid}:{ts}".encode('utf-8'), hashlib.sha256).hexdigest()
+    mac = hmac.new(
+        SECRET.encode('utf-8'),
+        f"{txid}:{ts}".encode('utf-8'),
+        hashlib.sha256,
+    ).hexdigest()
     return f"LS-{ts}-{mac[:24]}"
 
 
@@ -215,11 +237,11 @@ def verify_admin_key(key: str) -> bool:
     return key == expected
 
 
-def verify_trc20_tx_online(txid: str) -> bool:
-    """Attempt to verify a TRC20/USDT transaction using public TronGrid endpoints when possible.
+def verify_trc20_tx_online(txid: str) -> bool:  # noqa: C901
+    """Attempt to verify a TRC20/USDT transaction using public TronGrid endpoints.
 
-    This is best-effort: we'll try to call a public API and look for the txid. If requests is
-    not available or the API fails, return False so the admin can verify manually.
+    Best-effort: try a public API and look for the txid. If requests is not available
+    or the API fails, return False so the admin can verify manually.
     """
     # requests is imported at module-level to allow tests to monkeypatch payments.requests
     if 'requests' not in globals():
@@ -229,7 +251,7 @@ def verify_trc20_tx_online(txid: str) -> bool:
         except Exception:
             return False
 
-    # TronGrid public API (prefer v1). If TRONGRID_KEY is provided, use it in headers.
+    # TronGrid public API (prefer v1). If TRONGRID_KEY provided, use it.
     base = os.environ.get('TRONGRID_BASE', 'https://api.trongrid.io')
     api_key = os.environ.get('TRONGRID_KEY')
     headers = {'Accept': 'application/json'}

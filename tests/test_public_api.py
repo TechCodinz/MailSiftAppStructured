@@ -2,6 +2,7 @@ import io
 import types
 
 from app import extract_emails_from_text
+from typing import NoReturn
 import file_parsing
 import payments
 
@@ -18,12 +19,15 @@ def test_extract_text_from_file_safe() -> None:
     assert "hello" in text.lower()
 
 
-def test_verify_trc20_handles_nonjson(monkeypatch) -> None:
+from _pytest.monkeypatch import MonkeyPatch
+
+
+def test_verify_trc20_handles_nonjson(monkeypatch: MonkeyPatch) -> None:
     class DummyResp:
         status_code = 200
         text = "not json"
 
-        def json(self) -> "Never":
+        def json(self) -> NoReturn:
             raise ValueError("no json")
 
     monkeypatch.setattr(

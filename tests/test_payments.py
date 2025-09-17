@@ -1,8 +1,9 @@
 from payments import record_payment, get_payment, mark_verified, generate_license_for
-from typing import Any
+from pathlib import Path
+from _pytest.monkeypatch import MonkeyPatch
 
 
-def test_record_and_get_payment(tmp_path: Any, monkeypatch: Any) -> None:
+def test_record_and_get_payment(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     # point PAYMENTS_FILE to a temp file
     p = tmp_path / 'payments.json'
     monkeypatch.setenv('MAILSIFT_SECRET', 'test-secret')
