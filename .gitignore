@@ -1,0 +1,46 @@
+# Ignore accidental top-level Downloads directory
+/Downloads/
+
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments and local config
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+
+# Test and tooling caches
+.pytest_cache/
+
+# IDE/editor
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# JS/packaging/build artifacts
+node_modules/
+build/
+dist/
+*.egg-info/
+
+# Logs and local databases
+*.log
+*.db
+*.sql
+
+# Archives and temp files
+*.zip
+*.tar.gz
+*.tgz
+*.bak
+*.tmp
+
+# Local outside-of-repo storage
+/_outside/
