@@ -10,6 +10,7 @@ import json
 import time
 import random
 from datetime import datetime
+from pathlib import Path
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('MAILSIFT_SECRET', 'dev-secret-key')
@@ -556,6 +557,17 @@ def admin_metrics():
         'recent': recent,
     }
     return render_template('admin_metrics.html', metrics=metrics)
+
+
+@app.route('/download/desktop')
+def download_desktop():
+    # Serve a pre-built binary if present
+    build_dir = Path(os.environ.get('DESKTOP_BUILD_DIR') or Path(__file__).parent / 'dist')
+    candidates = list(build_dir.glob('gui*'))
+    if not candidates:
+        return jsonify({'error': 'desktop build not found'}), 404
+    target = max(candidates, key=lambda p: p.stat().st_mtime)
+    return send_file(str(target), as_attachment=True, download_name=target.name)
 
 
 if __name__ == '__main__':
