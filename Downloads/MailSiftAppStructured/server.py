@@ -14,6 +14,26 @@ from datetime import datetime
 app = Flask(__name__)
 app.secret_key = os.environ.get('MAILSIFT_SECRET', 'dev-secret-key')
 
+# Basic production-hardening defaults (can be overridden via env FLASK_*)
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'true').lower() in ('1', 'true', 'yes')
+app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH_MB', '10')) * 1024 * 1024
+
+
+@app.after_request
+def add_security_headers(resp):
+    # Minimal safe headers; adjust CSP as needed if you add external scripts
+    resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    resp.headers.setdefault('X-Frame-Options', 'DENY')
+    resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    # Allow inline styles used in templates; restrict scripts to self
+    csp = "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; script-src 'self'"
+    resp.headers.setdefault('Content-Security-Policy', csp)
+    if request.scheme == 'https':
+        resp.headers.setdefault('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
+    return resp
+
 
 def admin_auth_required(f):
     from functools import wraps
@@ -43,8 +63,25 @@ def index():
     return render_template('index.html', results=results)
 
 
+@app.route('/paywall')
+def paywall():
+    return render_template('paywall.html', wallets={
+        'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+        'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+        'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+    })
+
+
 @app.route('/scrape', methods=['POST'])
 def scrape():
+    # Enforce free quota limit unless unlocked
+    free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
+    if not session.get('unlocked') and session.get('scrape_quota', 0) >= free_limit:
+        return render_template('paywall.html', error='Free quota reached. Please unlock to continue.', wallets={
+            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+        })
     # support text input, file upload, or one/multiple URLs
     text = ''
     if 'text_input' in request.form and request.form['text_input'].strip():
@@ -98,8 +135,7 @@ def scrape():
                         u, v, iv = fut.result()
                     except Exception:
                         u, v, iv = url, [], ['fetch_failed']
-                    # increment quota per successful fetch
-                    session_increment_scrape_quota()
+                    # collect per-site results
                     per_site[u] = {'valid': v, 'invalid': iv}
                     total_valid.extend(v)
                     total_invalid.extend(iv)
@@ -114,6 +150,9 @@ def scrape():
     session['invalid'] = sorted(set(session.get('invalid', []) + total_invalid))
     session['meta'] = session.get('meta', {})
 
+    # Increment quota once per scrape attempt
+    session_increment_scrape_quota()
+
     provider_groups = group_by_provider(session.get('extracted', []))
     results = {'valid': provider_groups, 'per_site': per_site or None, 'invalid': session.get('invalid', []), 'meta': session.get('meta', {})}
     return render_template('index.html', results=results)
@@ -122,21 +161,49 @@ def scrape():
 @app.route('/pay', methods=['POST'])
 def pay():
     if request.method == 'POST':
-        txid = request.form.get('txid')
-        address = request.form.get('contact') or request.form.get('address')
-        amount = float(request.form.get('amount') or 0)
-        contact = request.form.get('contact')
+        txid = (request.form.get('txid') or '').strip()
+        address = (request.form.get('contact') or request.form.get('address') or '').strip()
+        contact = (request.form.get('contact') or '').strip()
+        asset = (request.form.get('asset') or '').strip()
+        amt_raw = (request.form.get('amount') or '').strip()
+        try:
+            amount = float(amt_raw)
+        except Exception:
+            amount = 0.0
         if not txid or not address:
-            return render_template('paywall.html', error='txid and address required')
+            return render_template('paywall.html', error='txid and address required', wallets={
+                'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+                'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+                'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+            })
+        # minimal txid sanity check and duplicate guard
+        if len(txid) < 8 or len(txid) > 128:
+            return render_template('paywall.html', error='Invalid TXID format', wallets={
+                'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+                'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+                'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+            })
+        data = list_payments()
+        if txid in data:
+            return render_template('paywall.html', error='This TXID is already submitted. Await verification or redeem.', wallets={
+                'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+                'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+                'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+            })
         rec = record_payment(txid, address, amount)
         # attach contact if provided
-        data = list_payments()
         if txid in data and contact:
             data[txid]['contact'] = contact
+            if asset:
+                data[txid]['asset'] = asset
             # save back
             from payments import _save_payments
             _save_payments(data)
-        return render_template('paywall.html', error='Payment received. Awaiting verification. TXID: ' + str(txid))
+        return render_template('paywall.html', error='Payment received. Awaiting verification. TXID: ' + str(txid), wallets={
+            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+        })
     return render_template('paywall.html')
 
 
@@ -147,8 +214,44 @@ def redeem():
     for txid, info in payments.items():
         if info.get('license') == key or txid == key:
             session['unlocked'] = True
-            return render_template('paywall.html', error='Unlocked. License applied.')
-    return render_template('paywall.html', error='Invalid license or txid')
+            return render_template('paywall.html', error='Unlocked. License applied.', wallets={
+                'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+                'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+                'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+            })
+    return render_template('paywall.html', error='Invalid license or txid', wallets={
+        'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+        'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+        'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+    })
+
+
+@app.route('/unlock', methods=['POST'])
+def unlock():
+    # Accept license key from paywall form and unlock if matches an issued license
+    key = (request.form.get('license_key') or '').strip()
+    payments = list_payments()
+    for txid, info in payments.items():
+        if info.get('license') == key:
+            session['unlocked'] = True
+            return render_template('paywall.html', error='Unlocked. License applied.', wallets={
+                'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+                'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+                'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+            })
+    # Dev bypass for local testing
+    if key == 'LET-ME-IN-DEV':
+        session['unlocked'] = True
+        return render_template('paywall.html', error='Unlocked (dev).', wallets={
+            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+        })
+    return render_template('paywall.html', error='Invalid license key', wallets={
+        'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+        'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+        'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+    })
 
 
 @app.route('/admin/payments', methods=['GET', 'POST'])
@@ -169,6 +272,14 @@ def admin_payments():
 
 @app.route('/download')
 def download():
+    # Gate downloads if past free quota and not unlocked
+    free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
+    if not session.get('unlocked') and session.get('scrape_quota', 0) >= free_limit:
+        return render_template('paywall.html', error='Please unlock to download results.', wallets={
+            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+        })
     emails = session.get('extracted')
     if not emails:
         return redirect(url_for('index'))
@@ -184,6 +295,13 @@ def download():
 
 @app.route('/download/json')
 def download_json():
+    free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
+    if not session.get('unlocked') and session.get('scrape_quota', 0) >= free_limit:
+        return render_template('paywall.html', error='Please unlock to download results.', wallets={
+            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+        })
     emails = session.get('extracted')
     meta = session.get('meta', {})
     if not emails:
@@ -200,6 +318,13 @@ def download_json():
 
 @app.route('/download/excel')
 def download_excel():
+    free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
+    if not session.get('unlocked') and session.get('scrape_quota', 0) >= free_limit:
+        return render_template('paywall.html', error='Please unlock to download results.', wallets={
+            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+        })
     emails = session.get('extracted') or []
     meta = session.get('meta', {})
     if not emails:
@@ -248,14 +373,9 @@ def reset():
     return redirect(url_for('index'))
 
 
-def admin_auth_required(f):
-    @wraps(f)
-    def inner(*args, **kwargs):
-        key = request.args.get('key') or request.form.get('key') or request.headers.get('X-Admin-Key')
-        if not verify_admin_key(key or ''):
-            return jsonify({'error': 'unauthorized'}), 401
-        return f(*args, **kwargs)
-    return inner
+@app.route('/healthz')
+def healthz():
+    return jsonify({'ok': True}), 200
 
 
 @app.route('/admin/payments/verify', methods=['POST'])

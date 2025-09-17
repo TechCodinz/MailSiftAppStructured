@@ -83,11 +83,11 @@
         <div class="wallets">
             <p><strong>Crypto Wallets for Payment:</strong></p>
             <ul>
-                <li>BTC: <code>bc1qyourbtcwallet</code></li>
-                <li>USDT (TRC20): <code>TXyourusdtaddress</code></li>
-                <li>ETH: <code>0xyourethwallet</code></li>
+                <li>BTC: <code>{{ wallets.btc or 'set MAILSIFT_WALLET_BTC' }}</code></li>
+                <li>USDT (TRC20): <code>{{ wallets.trc20 or 'set MAILSIFT_WALLET_TRC20' }}</code></li>
+                <li>ETH: <code>{{ wallets.eth or 'set MAILSIFT_WALLET_ETH' }}</code></li>
             </ul>
-            <p>After payment, contact us or use the key provided to unlock.</p>
+            <p>After payment, submit your TXID below. When verified, a license key will be issued, which you can apply to unlock.</p>
         </div>
         <hr>
         <h3>Submit Payment TXID</h3>
