@@ -44,7 +44,7 @@ class SubscriptionPlan:
 
 class SubscriptionManager:
     """Manage subscriptions and billing."""
-    
+
     # Define subscription plans
     PLANS = {
         SubscriptionTier.FREE: SubscriptionPlan(
@@ -163,11 +163,11 @@ class SubscriptionManager:
             stripe_price_id_yearly=os.environ.get('STRIPE_ENTERPRISE_YEARLY')
         )
     }
-    
+
     def __init__(self):
         self.subscriptions_file = 'subscriptions.json'
         self.load_subscriptions()
-    
+
     def load_subscriptions(self):
         """Load subscriptions from storage."""
         if os.path.exists(self.subscriptions_file):
@@ -175,12 +175,12 @@ class SubscriptionManager:
                 self.subscriptions = json.load(f)
         else:
             self.subscriptions = {}
-    
+
     def save_subscriptions(self):
         """Save subscriptions to storage."""
         with open(self.subscriptions_file, 'w') as f:
             json.dump(self.subscriptions, f, indent=2)
-    
+
     def create_subscription(
         self,
         user_id: str,
@@ -191,9 +191,9 @@ class SubscriptionManager:
     ) -> Dict[str, Any]:
         """Create a new subscription."""
         plan = self.PLANS[tier]
-        
+
         subscription_id = str(uuid.uuid4())
-        
+
         # Create Stripe subscription if not free tier
         stripe_subscription_id = None
         if tier != SubscriptionTier.FREE and stripe.api_key:
@@ -203,13 +203,13 @@ class SubscriptionManager:
                     email=email,
                     metadata={'user_id': user_id}
                 )
-                
+
                 # Get price ID based on billing period
                 price_id = (
                     plan.stripe_price_id_monthly if billing_period == 'monthly'
                     else plan.stripe_price_id_yearly
                 )
-                
+
                 # Create subscription
                 if price_id:
                     stripe_sub = stripe.Subscription.create(
@@ -221,13 +221,13 @@ class SubscriptionManager:
                     stripe_subscription_id = stripe_sub.id
             except Exception as e:
                 print(f"Stripe error: {e}")
-        
+
         # Calculate next billing date
         if billing_period == 'monthly':
             next_billing = datetime.utcnow() + timedelta(days=30)
         else:
             next_billing = datetime.utcnow() + timedelta(days=365)
-        
+
         # Create subscription record
         subscription = {
             'id': subscription_id,
@@ -249,12 +249,12 @@ class SubscriptionManager:
                 'last_reset': datetime.utcnow().isoformat()
             }
         }
-        
+
         self.subscriptions[subscription_id] = subscription
         self.save_subscriptions()
-        
+
         return subscription
-    
+
     def upgrade_subscription(
         self,
         subscription_id: str,
@@ -264,30 +264,30 @@ class SubscriptionManager:
         """Upgrade an existing subscription."""
         if subscription_id not in self.subscriptions:
             raise ValueError("Subscription not found")
-        
+
         subscription = self.subscriptions[subscription_id]
         old_tier = SubscriptionTier(subscription['tier'])
-        
+
         # Prevent downgrade (use separate downgrade method)
         if self._tier_level(new_tier) <= self._tier_level(old_tier):
             raise ValueError("Use downgrade_subscription for downgrades")
-        
+
         plan = self.PLANS[new_tier]
-        
+
         # Update Stripe subscription if applicable
         if subscription.get('stripe_subscription_id') and stripe.api_key:
             try:
                 stripe_sub = stripe.Subscription.retrieve(
                     subscription['stripe_subscription_id']
                 )
-                
+
                 # Get new price ID
                 period = billing_period or subscription['billing_period']
                 price_id = (
                     plan.stripe_price_id_monthly if period == 'monthly'
                     else plan.stripe_price_id_yearly
                 )
-                
+
                 # Update subscription
                 stripe.Subscription.modify(
                     subscription['stripe_subscription_id'],
@@ -299,34 +299,34 @@ class SubscriptionManager:
                 )
             except Exception as e:
                 print(f"Stripe upgrade error: {e}")
-        
+
         # Update subscription record
         subscription['tier'] = new_tier.value
         subscription['features'] = plan.features
         subscription['limits'] = plan.limits
         subscription['updated_at'] = datetime.utcnow().isoformat()
-        
+
         if billing_period:
             subscription['billing_period'] = billing_period
-        
+
         self.save_subscriptions()
-        
+
         # Send upgrade notification
         self._send_notification(
             subscription['email'],
             f"Subscription upgraded to {plan.name}",
             f"Your subscription has been upgraded to {plan.name} tier."
         )
-        
+
         return subscription
-    
+
     def cancel_subscription(self, subscription_id: str, immediate: bool = False) -> Dict[str, Any]:
         """Cancel a subscription."""
         if subscription_id not in self.subscriptions:
             raise ValueError("Subscription not found")
-        
+
         subscription = self.subscriptions[subscription_id]
-        
+
         # Cancel Stripe subscription
         if subscription.get('stripe_subscription_id') and stripe.api_key:
             try:
@@ -339,7 +339,7 @@ class SubscriptionManager:
                     )
             except Exception as e:
                 print(f"Stripe cancellation error: {e}")
-        
+
         # Update subscription status
         if immediate:
             subscription['status'] = 'cancelled'
@@ -347,77 +347,77 @@ class SubscriptionManager:
         else:
             subscription['status'] = 'pending_cancellation'
             subscription['cancel_at'] = subscription['next_billing_date']
-        
+
         subscription['updated_at'] = datetime.utcnow().isoformat()
-        
+
         self.save_subscriptions()
-        
+
         return subscription
-    
+
     def check_usage(self, subscription_id: str) -> Dict[str, Any]:
         """Check current usage against limits."""
         if subscription_id not in self.subscriptions:
             raise ValueError("Subscription not found")
-        
+
         subscription = self.subscriptions[subscription_id]
         usage = subscription['usage']
         limits = subscription['limits']
-        
+
         # Reset daily/monthly counters if needed
         last_reset = datetime.fromisoformat(usage['last_reset'])
         now = datetime.utcnow()
-        
+
         # Reset daily counter
         if (now - last_reset).days >= 1:
             usage['daily_requests'] = 0
-        
+
         # Reset monthly counter
         if (now - last_reset).days >= 30:
             usage['monthly_emails'] = 0
             usage['last_reset'] = now.isoformat()
-        
+
         # Calculate remaining
         remaining = {
             'monthly_emails': limits['monthly_emails'] - usage['monthly_emails'],
             'daily_requests': limits['daily_requests'] - usage['daily_requests']
         }
-        
+
         # Check if within limits
         within_limits = (
             remaining['monthly_emails'] > 0 and
             remaining['daily_requests'] > 0
         )
-        
+
         return {
             'within_limits': within_limits,
             'usage': usage,
             'limits': limits,
             'remaining': remaining
         }
-    
+
     def track_usage(self, subscription_id: str, emails: int = 0, requests: int = 1):
         """Track usage for a subscription."""
         if subscription_id not in self.subscriptions:
             return
-        
+
         subscription = self.subscriptions[subscription_id]
         subscription['usage']['monthly_emails'] += emails
         subscription['usage']['daily_requests'] += requests
-        
+
         self.save_subscriptions()
-    
+
     def get_subscription_by_user(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get subscription for a user."""
         for sub_id, sub in self.subscriptions.items():
             if sub['user_id'] == user_id and sub['status'] == 'active':
                 return sub
         return None
-    
+
     def handle_stripe_webhook(self, payload: Dict[str, Any], signature: str) -> bool:
         """Handle Stripe webhook events."""
         if not STRIPE_WEBHOOK_SECRET:
             return False
-        
+
         try:
             event = stripe.Webhook.construct_event(
                 payload, signature, STRIPE_WEBHOOK_SECRET
@@ -426,7 +426,7 @@ class SubscriptionManager:
             return False
         except stripe.error.SignatureVerificationError:
             return False
-        
+
         # Handle different event types
         if event['type'] == 'payment_intent.succeeded':
             self._handle_payment_success(event['data']['object'])
@@ -436,9 +436,9 @@ class SubscriptionManager:
             self._handle_subscription_deleted(event['data']['object'])
         elif event['type'] == 'customer.subscription.updated':
             self._handle_subscription_updated(event['data']['object'])
-        
+
         return True
-    
+
     def _handle_payment_success(self, payment_intent):
         """Handle successful payment."""
         # Find subscription by Stripe customer
@@ -448,7 +448,7 @@ class SubscriptionManager:
                 sub['last_payment'] = datetime.utcnow().isoformat()
                 self.save_subscriptions()
                 break
-    
+
     def _handle_payment_failure(self, payment_intent):
         """Handle failed payment."""
         # Find subscription and mark as payment_failed
@@ -456,7 +456,7 @@ class SubscriptionManager:
             if sub.get('stripe_customer_id') == payment_intent['customer']:
                 sub['status'] = 'payment_failed'
                 self.save_subscriptions()
-                
+
                 # Send notification
                 self._send_notification(
                     sub['email'],
@@ -464,7 +464,7 @@ class SubscriptionManager:
                     "Your payment failed. Please update your payment method."
                 )
                 break
-    
+
     def _handle_subscription_deleted(self, subscription):
         """Handle subscription deletion from Stripe."""
         for sub_id, sub in self.subscriptions.items():
@@ -473,7 +473,7 @@ class SubscriptionManager:
                 sub['cancelled_at'] = datetime.utcnow().isoformat()
                 self.save_subscriptions()
                 break
-    
+
     def _handle_subscription_updated(self, subscription):
         """Handle subscription update from Stripe."""
         for sub_id, sub in self.subscriptions.items():
@@ -491,7 +491,7 @@ class SubscriptionManager:
                 )
                 self.save_subscriptions()
                 break
-    
+
     def _tier_level(self, tier: SubscriptionTier) -> int:
         """Get numeric level for tier comparison."""
         levels = {
@@ -501,13 +501,13 @@ class SubscriptionManager:
             SubscriptionTier.ENTERPRISE: 3
         }
         return levels.get(tier, 0)
-    
+
     def _send_notification(self, email: str, subject: str, message: str):
         """Send notification email."""
         # Implement email sending
         # For now, just log
         print(f"Notification to {email}: {subject} - {message}")
-    
+
     def get_pricing_table(self) -> List[Dict[str, Any]]:
         """Get pricing table for display."""
         pricing = []
@@ -528,11 +528,11 @@ class SubscriptionManager:
 # Revenue tracking
 class RevenueTracker:
     """Track and analyze revenue metrics."""
-    
+
     def __init__(self):
         self.revenue_file = 'revenue.json'
         self.load_revenue_data()
-    
+
     def load_revenue_data(self):
         """Load revenue data from storage."""
         if os.path.exists(self.revenue_file):
@@ -549,12 +549,12 @@ class RevenueTracker:
                     'growth_rate': 0
                 }
             }
-    
+
     def save_revenue_data(self):
         """Save revenue data to storage."""
         with open(self.revenue_file, 'w') as f:
             json.dump(self.revenue_data, f, indent=2)
-    
+
     def record_transaction(
         self,
         amount: float,
@@ -573,11 +573,11 @@ class RevenueTracker:
             'user_id': user_id,
             'timestamp': datetime.utcnow().isoformat()
         }
-        
+
         self.revenue_data['transactions'].append(transaction)
         self.update_metrics()
         self.save_revenue_data()
-    
+
     def update_metrics(self):
         """Update revenue metrics."""
         # Calculate MRR
@@ -588,10 +588,10 @@ class RevenueTracker:
                 tx_date = datetime.fromisoformat(transaction['timestamp'])
                 if (datetime.utcnow() - tx_date).days <= 30:
                     monthly_revenue += transaction['amount']
-        
+
         self.revenue_data['metrics']['mrr'] = monthly_revenue
         self.revenue_data['metrics']['arr'] = monthly_revenue * 12
-    
+
     def get_dashboard_metrics(self) -> Dict[str, Any]:
         """Get metrics for revenue dashboard."""
         return {
@@ -602,27 +602,27 @@ class RevenueTracker:
             'growth_rate': self._calculate_growth_rate(),
             'churn_rate': self._calculate_churn_rate()
         }
-    
+
     def _calculate_growth_rate(self) -> float:
         """Calculate month-over-month growth rate."""
         # Simplified calculation
         current_month = datetime.utcnow().month
         last_month = current_month - 1 if current_month > 1 else 12
-        
+
         current_revenue = 0
         last_revenue = 0
-        
+
         for transaction in self.revenue_data['transactions']:
             tx_date = datetime.fromisoformat(transaction['timestamp'])
             if tx_date.month == current_month:
                 current_revenue += transaction['amount']
             elif tx_date.month == last_month:
                 last_revenue += transaction['amount']
-        
+
         if last_revenue > 0:
             return ((current_revenue - last_revenue) / last_revenue) * 100
         return 0
-    
+
     def _calculate_churn_rate(self) -> float:
         """Calculate customer churn rate."""
         # Simplified calculation
