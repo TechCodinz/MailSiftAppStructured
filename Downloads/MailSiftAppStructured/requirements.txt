@@ -1,6 +1,11 @@
 flask>=2.0
 pywebview>=3.0
 werkzeug>=2.0
+# prod server
+gunicorn>=20.1
+flask-limiter>=3.5.0
+sentry-sdk[flask]>=1.40.0
+prometheus-client>=0.20.0
 # optional (recommended) for better parsing and validation
 pdfminer.six>=20201018
 python-docx>=0.8.11

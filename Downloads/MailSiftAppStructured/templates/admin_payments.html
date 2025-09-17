@@ -12,6 +12,7 @@
   </head>
   <body>
     <h2>Payments</h2>
+    <canvas id="chart" width="800" height="200" style="background:#0b0b0b; border-radius:8px; margin-bottom:12px"></canvas>
     <table>
       <thead>
   <tr><th>Address</th><th>Amount</th><th>TXID</th><th>Contact</th><th>Verified</th><th>License</th><th>Actions</th></tr>
@@ -42,4 +43,34 @@
       </tbody>
     </table>
   </body>
+  <script>
+    (function(){
+      try{
+        var data = {};
+        var rows = Array.from(document.querySelectorAll('tbody tr'));
+        rows.forEach(function(r){
+          var verified = r.querySelector('.verified') ? 'verified' : 'pending';
+          data[verified] = (data[verified]||0)+1;
+        });
+        var ctx = document.getElementById('chart');
+        if(ctx){
+          var c = ctx.getContext('2d');
+          var keys = Object.keys(data);
+          var maxv = 1; keys.forEach(function(k){ maxv = Math.max(maxv, data[k]); });
+          var w = ctx.width, h = ctx.height, barW = Math.max(60, Math.floor(w/(keys.length*2)));
+          c.clearRect(0,0,w,h);
+          keys.forEach(function(k,i){
+            var v = data[k];
+            var x = 40 + i*(barW+40);
+            var y = h - 30;
+            var bh = Math.floor((h-60) * (v/maxv));
+            c.fillStyle = k==='verified' ? '#0f0' : '#ffb300';
+            c.fillRect(x, y-bh, barW, bh);
+            c.fillStyle = '#9bd';
+            c.fillText(k+': '+v, x, y+12);
+          });
+        }
+      }catch(e){}
+    })();
+  </script>
 </html>
