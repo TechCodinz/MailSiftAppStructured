@@ -1,1 +1,0 @@
-# Logic for Voting App

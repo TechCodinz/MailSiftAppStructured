@@ -1,0 +1,24 @@
+# Ignore accidental top-level Downloads directory
+/Downloads/
+
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments and local config
+.env
+.env.*
+.venv/
+venv/
+
+# Test and tooling caches
+.pytest_cache/
+
+# IDE/editor
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
