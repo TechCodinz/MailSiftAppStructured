@@ -94,6 +94,17 @@ def get_pricing_context():
     }
 
 
+def _current_plan_limits(plan_id: str, settings: dict) -> dict:
+    # simple lookup for monthly emails/domains limits by tier id
+    limits = {'monthly_emails': None, 'monthly_domains': None}
+    for t in settings.get('tiers', []) or []:
+        if t.get('id') == plan_id:
+            limits['monthly_emails'] = t.get('monthly_emails')
+            limits['monthly_domains'] = t.get('monthly_domains')
+            break
+    return limits
+
+
 @app.template_filter('mask_email')
 def mask_email_filter(email):
     try:
@@ -130,7 +141,16 @@ def index():
             results = {'valid': provider_groups, 'meta': meta, 'invalid': session.get('invalid', []), 'preview': True, 'preview_n': preview_n}
         else:
             results = {'valid': group_by_provider(extracted), 'meta': meta, 'invalid': session.get('invalid', [])}
-    return render_template('index.html', results=results)
+    # attach usage/plan info for banner
+    s = get_settings()
+    plan_id = session.get('plan_id') or 'one_time'
+    usage = None
+    if session.get('license_key'):
+        try:
+            usage = get_usage(session.get('license_key'))
+        except Exception:
+            usage = None
+    return render_template('index.html', results=results, plan_id=plan_id, usage=usage, tiers=s.get('tiers', []))
 
 
 @app.route('/scrape', methods=['POST'])
@@ -172,6 +192,18 @@ def scrape():
         planned = len(url_list)
         if not session.get('unlocked') and (quota >= free_limit or (quota + planned) > free_limit):
             return render_template('paywall.html', error=f'Free limit reached ({free_limit} site fetches). Please unlock to continue.', **get_pricing_context())
+        # enforce plan domain quota if license present
+        plan_id = session.get('plan_id')
+        license_key = session.get('license_key')
+        if license_key and plan_id and plan_id != 'one_time':
+            limits = _current_plan_limits(plan_id, s)
+            if limits.get('monthly_domains'):
+                try:
+                    u = get_usage(license_key)
+                    if int(u.get('domains', 0)) + planned > int(limits['monthly_domains']):
+                        return render_template('paywall.html', error='Plan domain quota exceeded. Upgrade or wait for next month.', **get_pricing_context())
+                except Exception:
+                    pass
         try:
             import requests
             from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -256,6 +288,8 @@ def pay():
                 if ok:
                     info = mark_verified(txid, verifier='trc20-auto')
                     session['unlocked'] = True
+                    session['plan_id'] = plan
+                    session['license_key'] = info.get('license')
                     auto_msg = 'Payment verified on-chain. License emailed to your contact.'
         except Exception:
             pass
@@ -271,6 +305,7 @@ def redeem():
         if info.get('license') == key or txid == key:
             session['unlocked'] = True
             session['license_key'] = info.get('license') or txid
+            session['plan_id'] = info.get('plan') or 'one_time'
             return render_template('paywall.html', error='Unlocked. License applied.', **get_pricing_context())
     return render_template('paywall.html', error='Invalid license or txid', **get_pricing_context())
 
@@ -300,6 +335,17 @@ def download():
     if license_key:
         emails = session.get('extracted') or []
         domains = len({e.split('@',1)[1] for e in emails if '@' in e})
+        # enforce plan email quota before incrementing
+        s = get_settings()
+        plan_id = session.get('plan_id')
+        if plan_id and plan_id != 'one_time':
+            limits = _current_plan_limits(plan_id, s)
+            try:
+                u = get_usage(license_key)
+                if limits.get('monthly_emails') and int(u.get('emails', 0)) + len(emails) > int(limits['monthly_emails']):
+                    return render_template('paywall.html', error='Plan email quota exceeded. Upgrade or wait for next month.', **get_pricing_context())
+            except Exception:
+                pass
         try:
             increment_usage(license_key, emails_delta=len(emails), domains_delta=domains)
         except Exception:
@@ -325,6 +371,16 @@ def download_json():
     if license_key:
         emails = session.get('extracted') or []
         domains = len({e.split('@',1)[1] for e in emails if '@' in e})
+        s = get_settings()
+        plan_id = session.get('plan_id')
+        if plan_id and plan_id != 'one_time':
+            limits = _current_plan_limits(plan_id, s)
+            try:
+                u = get_usage(license_key)
+                if limits.get('monthly_emails') and int(u.get('emails', 0)) + len(emails) > int(limits['monthly_emails']):
+                    return render_template('paywall.html', error='Plan email quota exceeded. Upgrade or wait for next month.', **get_pricing_context())
+            except Exception:
+                pass
         try:
             increment_usage(license_key, emails_delta=len(emails), domains_delta=domains)
         except Exception:
@@ -351,6 +407,16 @@ def download_excel():
     if license_key:
         emails = session.get('extracted') or []
         domains = len({e.split('@',1)[1] for e in emails if '@' in e})
+        s = get_settings()
+        plan_id = session.get('plan_id')
+        if plan_id and plan_id != 'one_time':
+            limits = _current_plan_limits(plan_id, s)
+            try:
+                u = get_usage(license_key)
+                if limits.get('monthly_emails') and int(u.get('emails', 0)) + len(emails) > int(limits['monthly_emails']):
+                    return render_template('paywall.html', error='Plan email quota exceeded. Upgrade or wait for next month.', **get_pricing_context())
+            except Exception:
+                pass
         try:
             increment_usage(license_key, emails_delta=len(emails), domains_delta=domains)
         except Exception:
@@ -464,6 +530,32 @@ def admin_settings():
         except Exception:
             pass
     return render_template('admin_settings.html', settings=get_settings())
+
+
+@app.route('/admin/metrics')
+@admin_auth_required
+def admin_metrics():
+    # compile simple metrics
+    payments = list_payments()
+    rows = list(payments.values()) if isinstance(payments, dict) else payments
+    total = len(rows)
+    verified = sum(1 for r in rows if r.get('verified'))
+    revenue = 0.0
+    for r in rows:
+        try:
+            revenue += float(r.get('amount') or 0)
+        except Exception:
+            pass
+    active = sum(1 for r in rows if r.get('license'))
+    recent = sorted(rows, key=lambda r: r.get('timestamp', 0), reverse=True)[:20]
+    metrics = {
+        'total_payments': total,
+        'verified_payments': verified,
+        'revenue_usd': int(revenue),
+        'active_licenses': active,
+        'recent': recent,
+    }
+    return render_template('admin_metrics.html', metrics=metrics)
 
 
 if __name__ == '__main__':

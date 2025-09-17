@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Admin Metrics</title>
+    <style>
+      body { font-family: Arial, sans-serif; background:#111; color:#fff; padding:20px }
+      .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap:12px }
+      .card { background:#1c1c1c; padding:16px; border-radius:10px }
+      .muted { color:#9aa }
+      table { width:100%; border-collapse: collapse }
+      th, td { border:1px solid #333; padding:6px }
+    </style>
+  </head>
+  <body>
+    <h2>Metrics</h2>
+    <div class="grid">
+      <div class="card"><div>Total Payments</div><h3>{{ metrics.total_payments }}</h3></div>
+      <div class="card"><div>Verified Payments</div><h3>{{ metrics.verified_payments }}</h3></div>
+      <div class="card"><div>Total Revenue (USD est)</div><h3>${{ metrics.revenue_usd }}</h3><div class="muted">sum of amounts</div></div>
+      <div class="card"><div>Active Licenses</div><h3>{{ metrics.active_licenses }}</h3></div>
+    </div>
+    <h3 style="margin-top:20px">Recent</h3>
+    <table>
+      <thead><tr><th>TXID</th><th>Amount</th><th>Verified</th><th>Plan</th><th>Contact</th></tr></thead>
+      <tbody>
+        {% for p in metrics.recent %}
+          <tr>
+            <td>{{ p.txid }}</td>
+            <td>{{ p.amount }}</td>
+            <td>{% if p.verified %}Yes{% else %}No{% endif %}</td>
+            <td>{{ p.plan or 'one_time' }}</td>
+            <td>{{ p.contact or '' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div style="margin-top:20px"><a href="/admin/payments" style="color:#0ff">← Payments</a></div>
+  </body>
+</html>

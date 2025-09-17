@@ -109,6 +109,11 @@
     <a href="/reset">🔁 Reset</a>
   </div>
   <div class="container">
+    {% if plan_id or usage %}
+      <div style="background:#232323; padding:10px; border-radius:8px; margin-bottom:14px">
+        <strong>Plan:</strong> {{ plan_id or 'one_time' }}{% if usage %} • <strong>This month:</strong> {{ usage.emails or 0 }} emails, {{ usage.domains or 0 }} domains{% endif %}
+      </div>
+    {% endif %}
     <form method="POST" enctype="multipart/form-data">
   <label>Scrape website(s) (premium after 3 free fetches):</label>
   <label for="url_input">Website URL(s)</label>
