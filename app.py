@@ -1,4 +1,9 @@
-from flask import Flask, render_template, request, session
+from flask import (
+    Flask,
+    render_template,
+    request,
+    session,
+)
 import re
 import os
 from collections import defaultdict
@@ -30,7 +35,8 @@ def extract_emails_from_text(text: str):
     if not text:
         return [], []
     cleaned = normalize_deobfuscate(text)
-    # compact spaced punctuation introduced by normalization, e.g. 'name @ domain . com' -> 'name@domain.com'
+    # compact spaced punctuation introduced by normalization
+    # e.g. 'name @ domain . com' -> 'name@domain.com'
     compacted = re.sub(r"(\w)\s*@\s*(\w)", r"\1@\2", cleaned)
     compacted = re.sub(r"(\w)\s*\.\s*(\w)", r"\1.\2", compacted)
     candidates = set()
@@ -51,22 +57,37 @@ def extract_emails_from_text(text: str):
 
     # allow common obfuscated forms like 'name (at) domain (dot) com'
     # place hyphen at end of class or escape it to avoid a range error
-    obf = re.compile(r'([A-Za-z0-9_.+\-]+)\s*(?:\(|\[)?\s*at\s*(?:\)|\])?\s*([A-Za-z0-9_.\-\s\[\]\(\)]*)', flags=re.IGNORECASE)
+    obf = re.compile(
+        r'([A-Za-z0-9_.+\-]+)\s*(?:\(|\[)?\s*at\s*(?:\)|\])?\s*('
+        r'[A-Za-z0-9_.\-\s\[\]\(\)]*)',
+        flags=re.IGNORECASE,
+    )
     # run obfuscated pattern on the normalized text so (at)/(dot) are converted
     for m in obf.finditer(cleaned):
         local = m.group(1)
         domain_raw = m.group(2)
         if '@' in domain_raw:
             continue
-        if not ('.' in domain_raw or re.search(r'\bdot\b', domain_raw, flags=re.IGNORECASE)):
+        if not (
+            '.' in domain_raw
+            or re.search(r'\bdot\b', domain_raw, flags=re.IGNORECASE)
+        ):
             continue
-        domain = re.sub(r'(?:\s*(?:\(|\[)?\s*dot\s*(?:\)|\])?\s*)', '.', domain_raw, flags=re.IGNORECASE)
+        domain = re.sub(
+            r'(?:\s*(?:\(|\[)?\s*dot\s*(?:\)|\])?\s*)',
+            '.',
+            domain_raw,
+            flags=re.IGNORECASE,
+        )
         domain = domain.replace(' ', '').replace('..', '.')
         domain = domain.strip('.')
         if domain:
             candidates.add(f"{local}@{domain}")
 
-    spaced = re.compile(r'([A-Za-z0-9_.+-]+)\s*@\s*([A-Za-z0-9-]+(?:\s*\.\s*[A-Za-z0-9-]+)+)')
+    spaced = re.compile(
+        r'([A-Za-z0-9_.+-]+)\s*@\s*('
+        r'[A-Za-z0-9-]+(?:\s*\.\s*[A-Za-z0-9-]+)+)'
+    )
     for m in spaced.finditer(cleaned):
         addr = m.group(1) + '@' + re.sub(r'\s*\.\s*', '.', m.group(2))
         candidates.add(addr)
@@ -107,7 +128,14 @@ def extract_emails_from_html(html_text: str):
                     pass
     except Exception:
         # fallback: try to pull mailto: addresses from raw HTML before stripping tags
-        mails = ' '.join(m.group(1) for m in re.finditer(r'mailto:([^\s"\'">]+)', html_text, flags=re.IGNORECASE))
+        mails = ' '.join(
+            m.group(1)
+            for m in re.finditer(
+                r'mailto:([^\s"\'">]+)',
+                html_text,
+                flags=re.IGNORECASE,
+            )
+        )
         text = re.sub(r'<[^>]+>', ' ', html_text) + ' ' + mails
 
     # normalize and extract from the assembled text in both code paths
@@ -159,13 +187,40 @@ def classify_expertise(email: str) -> str:
         return 'other'
     text = (local + ' ' + domain).lower()
     checks = [
-        ('legal', ('law', 'legal', 'attorney', 'advocate', 'solicitor', 'llp', 'barrister')),
-        ('healthcare', ('clinic', 'hospital', 'health', 'dental', 'dent', 'medic', 'pharma', 'care')),
-        ('education', ('edu', 'school', 'college', 'university', 'academy', 'campus')),
-        ('real_estate', ('realty', 'estate', 'realtor', 'broker', 'homes', 'property')),
-        ('finance', ('bank', 'finance', 'capital', 'fund', 'asset', 'equity', 'cpa', 'account')),
-        ('technology', ('tech', 'software', 'it', 'systems', 'dev', 'cloud', 'ai', 'data')),
-        ('marketing', ('marketing', 'media', 'advert', 'adtech', 'pr', 'brand', 'creative')),
+        (
+            'legal',
+            (
+                'law', 'legal', 'attorney', 'advocate',
+                'solicitor', 'llp', 'barrister'
+            ),
+        ),
+        (
+            'healthcare',
+            (
+                'clinic', 'hospital', 'health', 'dental',
+                'dent', 'medic', 'pharma', 'care'
+            ),
+        ),
+        (
+            'education',
+            ('edu', 'school', 'college', 'university', 'academy', 'campus'),
+        ),
+        (
+            'real_estate',
+            ('realty', 'estate', 'realtor', 'broker', 'homes', 'property'),
+        ),
+        (
+            'finance',
+            ('bank', 'finance', 'capital', 'fund', 'asset', 'equity', 'cpa', 'account'),
+        ),
+        (
+            'technology',
+            ('tech', 'software', 'it', 'systems', 'dev', 'cloud', 'ai', 'data'),
+        ),
+        (
+            'marketing',
+            ('marketing', 'media', 'advert', 'adtech', 'pr', 'brand', 'creative'),
+        ),
         ('manufacturing', ('mfg', 'factory', 'industrial', 'manufactur')),
         ('government', ('gov', 'state', 'city', 'council', 'municipal')),
         ('nonprofit', ('org', 'foundation', 'charity', 'ngo', 'nonprofit')),
@@ -175,14 +230,21 @@ def classify_expertise(email: str) -> str:
             return name
     # corporate: single dot domain (e.g., acme.com) and not free providers
     domain_only = domain
-    if domain_only and domain_only.count('.') == 1 and detect_provider(email) == 'corporate':
+    if (
+        domain_only
+        and domain_only.count('.') == 1
+        and detect_provider(email) == 'corporate'
+    ):
         return 'corporate'
     return 'other'
 
 
-def enrich_meta_for_emails(emails, meta):
+def enrich_meta_for_emails(emails, meta) -> dict:
     # Adds MX validation and role flag to meta; best-effort (network may fail)
-    role_locals = {'info','admin','contact','sales','support','hello','team','office','enquiries','help','service'}
+    role_locals = {
+        'info', 'admin', 'contact', 'sales', 'support', 'hello',
+        'team', 'office', 'enquiries', 'help', 'service',
+    }
     try:
         from email_validator import validate_email, EmailNotValidError
     except Exception:
@@ -194,7 +256,11 @@ def enrich_meta_for_emails(emails, meta):
         # role flag
         try:
             local = e.split('@',1)[0].lower()
-            if local in role_locals or local.startswith('sales') or local.startswith('support'):
+            if (
+                local in role_locals
+                or local.startswith('sales')
+                or local.startswith('support')
+            ):
                 m['role'] = True
         except Exception:
             pass
@@ -214,8 +280,9 @@ def enrich_meta_for_emails(emails, meta):
 
 
 def session_increment_scrape_quota(sess=None):
-    # For tests we avoid touching Flask's session proxy. If a dict-like `sess` is provided,
-    # use it. Otherwise use a module-level fallback dict so calling this function outside
+    # For tests we avoid touching Flask's session proxy. If a dict-like `sess`
+    # is provided, use it. Otherwise use a module-level fallback dict so calling
+    # this function outside
     # of a request context is safe.
     if isinstance(sess, dict):
         target = sess
@@ -242,11 +309,18 @@ def unlock():
     if key == 'LET-ME-IN-DEV':
         session['unlocked'] = True
         return render_template('index.html')
-    return render_template('paywall.html', error='Invalid license key', wallets={
-        'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
-        'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
-        'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
-    })
+    return render_template(
+        'paywall.html',
+        error='Invalid license key',
+        wallets={
+            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+            'trc20': (
+                os.environ.get('MAILSIFT_WALLET_TRC20')
+                or os.environ.get('MAILSIFT_RECEIVE_ADDRESS')
+            ),
+            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+        },
+    )
 
 
 if __name__ == '__main__':

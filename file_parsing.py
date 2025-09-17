@@ -51,7 +51,8 @@ def extract_text_from_file(file_stream: BinaryIO, filename: str) -> str:
                 return extract_text(io.BytesIO(data)) or ''
             except Exception:
                 # fallback to writing temp file
-                import tempfile, os
+                import tempfile
+                import os
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tf:
                     tf.write(data)
                     path = tf.name
