@@ -5,7 +5,11 @@ import importlib
 import webbrowser
 
 # robust import that works inside PyInstaller one-file bundles
-flask_app = importlib.import_module("app").app
+try:
+    # prefer the production server app (paywall/payments)
+    flask_app = importlib.import_module("server").app
+except Exception:
+    flask_app = importlib.import_module("app").app
 
 def start_server():
     # don't use debug=True inside a packaged app
