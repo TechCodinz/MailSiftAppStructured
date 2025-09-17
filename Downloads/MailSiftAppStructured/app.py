@@ -180,6 +180,39 @@ def classify_expertise(email: str) -> str:
     return 'other'
 
 
+def enrich_meta_for_emails(emails, meta):
+    # Adds MX validation and role flag to meta; best-effort (network may fail)
+    role_locals = {'info','admin','contact','sales','support','hello','team','office','enquiries','help','service'}
+    try:
+        from email_validator import validate_email, EmailNotValidError
+    except Exception:
+        validate_email = None
+        EmailNotValidError = Exception
+
+    for e in emails:
+        m = meta.get(e) or {}
+        # role flag
+        try:
+            local = e.split('@',1)[0].lower()
+            if local in role_locals or local.startswith('sales') or local.startswith('support'):
+                m['role'] = True
+        except Exception:
+            pass
+        # mx check
+        if validate_email and 'mx' not in m:
+            try:
+                res = validate_email(e, check_deliverability=True)
+                # if no exception, DNS/MX is ok
+                m['mx'] = 'ok'
+            except EmailNotValidError:
+                m['mx'] = 'bad'
+            except Exception:
+                # network errors: leave unset to avoid confusion
+                pass
+        meta[e] = m
+    return meta
+
+
 def session_increment_scrape_quota(sess=None):
     # For tests we avoid touching Flask's session proxy. If a dict-like `sess` is provided,
     # use it. Otherwise use a module-level fallback dict so calling this function outside

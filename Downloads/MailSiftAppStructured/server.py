@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, abort, send_file
 import os
-from app import extract_emails_from_text, extract_emails_from_html, group_by_provider, session_increment_scrape_quota, detect_provider, extract_domain, classify_expertise
+from app import extract_emails_from_text, extract_emails_from_html, group_by_provider, session_increment_scrape_quota, detect_provider, extract_domain, classify_expertise, enrich_meta_for_emails
 from file_parsing import extract_text_from_file
 from payments import record_payment, get_payment, mark_verified, list_payments, verify_admin_key, verify_trc20_tx_online
 from functools import wraps
@@ -218,7 +218,7 @@ def scrape():
     merged = sorted(set(session.get('extracted', []) + total_valid))
     session['extracted'] = merged
     session['invalid'] = sorted(set(session.get('invalid', []) + total_invalid))
-    session['meta'] = session.get('meta', {})
+    session['meta'] = enrich_meta_for_emails(merged, session.get('meta', {}))
 
     # Increment quota once per scrape attempt
     session_increment_scrape_quota()
@@ -234,6 +234,10 @@ def scrape():
             by_domain.setdefault(d, []).append(e)
         cat = classify_expertise(e)
         by_category.setdefault(cat, []).append(e)
+    # hero metrics
+    total_count = len(emails_all)
+    unique_domains = len(set(extract_domain(e) for e in emails_all if extract_domain(e)))
+    categories_present = len(by_category)
     results = {
         'valid': provider_groups,
         'per_site': per_site or None,
@@ -241,6 +245,11 @@ def scrape():
         'meta': session.get('meta', {}),
         'by_domain': by_domain,
         'by_category': by_category,
+        'hero': {
+            'total_emails': total_count,
+            'unique_domains': unique_domains,
+            'categories': categories_present,
+        }
     }
     return render_template('index.html', results=results)
 

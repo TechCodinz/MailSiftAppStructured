@@ -107,6 +107,22 @@
     <a href="/reset">🔁 Reset License</a>
   </div>
   <div class="container">
+    {% if results and results.hero %}
+      <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+        <div style="background:#202020; padding:12px; border-radius:10px; min-width:180px; text-align:center; box-shadow:0 2px 10px rgba(0,0,0,0.4)">
+          <div style="font-size:12px; color:#9bd;">TOTAL EMAILS</div>
+          <div style="font-size:22px; font-weight:bold;">{{ results.hero.total_emails }}</div>
+        </div>
+        <div style="background:#202020; padding:12px; border-radius:10px; min-width:180px; text-align:center; box-shadow:0 2px 10px rgba(0,0,0,0.4)">
+          <div style="font-size:12px; color:#9bd;">UNIQUE DOMAINS</div>
+          <div style="font-size:22px; font-weight:bold;">{{ results.hero.unique_domains }}</div>
+        </div>
+        <div style="background:#202020; padding:12px; border-radius:10px; min-width:180px; text-align:center; box-shadow:0 2px 10px rgba(0,0,0,0.4)">
+          <div style="font-size:12px; color:#9bd;">CATEGORIES</div>
+          <div style="font-size:22px; font-weight:bold;">{{ results.hero.categories }}</div>
+        </div>
+      </div>
+    {% endif %}
     <form method="POST" enctype="multipart/form-data">
   <label>Scrape website(s) (premium after 3 free uses):</label>
   <label for="url_input">Website URL(s)</label>
@@ -211,6 +227,15 @@
   </div>
   <script>
     document.addEventListener('DOMContentLoaded', function(){
+      var allEmails = Array.from(document.querySelectorAll('.copy-email')).map(function(e){ return e.textContent; });
+      var copyAllBtn = document.createElement('button');
+      copyAllBtn.textContent = '📋 Copy All';
+      copyAllBtn.style.marginLeft = '8px';
+      copyAllBtn.addEventListener('click', function(){
+        try{ navigator.clipboard.writeText(allEmails.join('\n')); }catch(e){}
+      });
+      var actions = document.querySelector('.actions');
+      if(actions){ actions.appendChild(copyAllBtn); }
       document.querySelectorAll('.copy-email').forEach(function(el){
         el.style.cursor = 'copy';
         el.title = 'Click to copy email';
