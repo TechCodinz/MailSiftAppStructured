@@ -8,7 +8,7 @@ import smtplib
 from email.message import EmailMessage
 import requests
 
-PAYMENTS_FILE = os.path.join(os.path.dirname(__file__), 'payments.json')
+PAYMENTS_FILE = os.environ.get('MAILSIFT_PAYMENTS_FILE') or os.path.join(os.path.dirname(__file__), 'payments.json')
 SECRET = os.environ.get('MAILSIFT_SECRET', 'dev-secret-key')
 ADMIN_KEY = os.environ.get('MAILSIFT_ADMIN_KEY', 'admin-secret')
 

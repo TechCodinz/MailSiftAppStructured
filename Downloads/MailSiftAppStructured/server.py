@@ -32,6 +32,22 @@ def admin_auth_required(f):
     return inner
 
 
+def get_pricing_context():
+    """Provide template context for pricing and wallets from environment variables."""
+    price_usdt = float(os.environ.get('PRICE_USDT', '19') or 19)
+    return {
+        'price_usdt': price_usdt,
+        'wallet_btc': os.environ.get('WALLET_BTC', ''),
+        'wallet_trc20': os.environ.get('MAILSIFT_RECEIVE_ADDRESS', ''),
+        'wallet_eth': os.environ.get('WALLET_ETH', ''),
+    }
+
+
+@app.route('/paywall', methods=['GET'])
+def paywall_view():
+    return render_template('paywall.html', **get_pricing_context())
+
+
 @app.route('/')
 def index():
     # show any current session results
@@ -73,8 +89,14 @@ def scrape():
                 meta[e] = {'role': False}
         session['meta'] = meta
 
-    # If we have URLs, fetch them concurrently (best-effort)
+    # If we have URLs, enforce paywall after a small free quota and then fetch concurrently (best-effort)
     if url_list:
+        # paywall gating for URL scraping usage
+        free_limit = int(os.environ.get('FREE_SCRAPE_LIMIT', '3') or 3)
+        quota = session.get('scrape_quota', 0)
+        planned = len(url_list)
+        if not session.get('unlocked') and (quota >= free_limit or (quota + planned) > free_limit):
+            return render_template('paywall.html', error=f'Free limit reached ({free_limit} site fetches). Please unlock to continue.', **get_pricing_context())
         try:
             import requests
             from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -126,8 +148,12 @@ def pay():
         address = request.form.get('contact') or request.form.get('address')
         amount = float(request.form.get('amount') or 0)
         contact = request.form.get('contact')
+        asset = (request.form.get('asset') or '').strip()
+        # require contact email so we can email the license automatically
+        if not contact or '@' not in contact:
+            return render_template('paywall.html', error='Contact email required to deliver license.', **get_pricing_context())
         if not txid or not address:
-            return render_template('paywall.html', error='txid and address required')
+            return render_template('paywall.html', error='txid and address required', **get_pricing_context())
         rec = record_payment(txid, address, amount)
         # attach contact if provided
         data = list_payments()
@@ -136,7 +162,19 @@ def pay():
             # save back
             from payments import _save_payments
             _save_payments(data)
-        return render_template('paywall.html', error='Payment received. Awaiting verification. TXID: ' + str(txid))
+        # Attempt automatic verification for USDT (TRC20) if receiving address configured
+        auto_msg = None
+        try:
+            expected_addr = os.environ.get('MAILSIFT_RECEIVE_ADDRESS')
+            if expected_addr and ('trc20' in asset.lower() or 'usdt' in asset.lower() or asset.strip() == ''):
+                ok = verify_trc20_tx_online(txid)
+                if ok:
+                    info = mark_verified(txid, verifier='trc20-auto')
+                    session['unlocked'] = True
+                    auto_msg = 'Payment verified on-chain. License emailed to your contact.'
+        except Exception:
+            pass
+        return render_template('paywall.html', error=(auto_msg or ('Payment received. Awaiting verification. TXID: ' + str(txid))), **get_pricing_context())
     return render_template('paywall.html')
 
 
@@ -147,8 +185,8 @@ def redeem():
     for txid, info in payments.items():
         if info.get('license') == key or txid == key:
             session['unlocked'] = True
-            return render_template('paywall.html', error='Unlocked. License applied.')
-    return render_template('paywall.html', error='Invalid license or txid')
+            return render_template('paywall.html', error='Unlocked. License applied.', **get_pricing_context())
+    return render_template('paywall.html', error='Invalid license or txid', **get_pricing_context())
 
 
 @app.route('/admin/payments', methods=['GET', 'POST'])
@@ -169,6 +207,8 @@ def admin_payments():
 
 @app.route('/download')
 def download():
+    if not session.get('unlocked'):
+        return render_template('paywall.html', error='Please unlock to download results.', **get_pricing_context())
     emails = session.get('extracted')
     if not emails:
         return redirect(url_for('index'))
@@ -184,6 +224,8 @@ def download():
 
 @app.route('/download/json')
 def download_json():
+    if not session.get('unlocked'):
+        return render_template('paywall.html', error='Please unlock to download results.', **get_pricing_context())
     emails = session.get('extracted')
     meta = session.get('meta', {})
     if not emails:
@@ -200,6 +242,8 @@ def download_json():
 
 @app.route('/download/excel')
 def download_excel():
+    if not session.get('unlocked'):
+        return render_template('paywall.html', error='Please unlock to download results.', **get_pricing_context())
     emails = session.get('extracted') or []
     meta = session.get('meta', {})
     if not emails:
@@ -246,16 +290,6 @@ def reset():
         except Exception:
             pass
     return redirect(url_for('index'))
-
-
-def admin_auth_required(f):
-    @wraps(f)
-    def inner(*args, **kwargs):
-        key = request.args.get('key') or request.form.get('key') or request.headers.get('X-Admin-Key')
-        if not verify_admin_key(key or ''):
-            return jsonify({'error': 'unauthorized'}), 401
-        return f(*args, **kwargs)
-    return inner
 
 
 @app.route('/admin/payments/verify', methods=['POST'])

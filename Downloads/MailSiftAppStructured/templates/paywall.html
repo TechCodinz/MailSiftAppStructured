@@ -70,7 +70,7 @@
 <body>
     <div class="paywall">
         <h2>Unlock MailSift</h2>
-        <p>Enter your license key or pay to get one instantly:</p>
+        <p>Enter your license key or pay {{ price_usdt or 19 }} USDT to get one instantly:</p>
         <form method="post" action="/unlock">
             <input type="text" name="license_key" placeholder="Enter License Key" required>
             <button type="submit">Unlock</button>
@@ -83,9 +83,9 @@
         <div class="wallets">
             <p><strong>Crypto Wallets for Payment:</strong></p>
             <ul>
-                <li>BTC: <code>bc1qyourbtcwallet</code></li>
-                <li>USDT (TRC20): <code>TXyourusdtaddress</code></li>
-                <li>ETH: <code>0xyourethwallet</code></li>
+                {% if wallet_btc %}<li>BTC: <code>{{ wallet_btc }}</code></li>{% endif %}
+                {% if wallet_trc20 %}<li>USDT (TRC20): <code>{{ wallet_trc20 }}</code></li>{% endif %}
+                {% if wallet_eth %}<li>ETH: <code>{{ wallet_eth }}</code></li>{% endif %}
             </ul>
             <p>After payment, contact us or use the key provided to unlock.</p>
         </div>
@@ -95,11 +95,11 @@
             <label>Asset</label>
             <input type="text" name="asset" value="USDT (TRC20)" required>
             <label>Amount</label>
-            <input type="text" name="amount" placeholder="Amount" required>
+            <input type="text" name="amount" placeholder="{{ price_usdt or 19 }}" required>
             <label>TXID</label>
             <input type="text" name="txid" placeholder="Transaction ID" required>
             <label>Contact Email (optional)</label>
-            <input type="email" name="contact" placeholder="you@domain.com">
+            <input type="email" name="contact" placeholder="you@domain.com" required>
             <button type="submit">Submit Payment</button>
         </form>
         <hr>

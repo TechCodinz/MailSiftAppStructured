@@ -104,11 +104,13 @@
 <body>
   <header>📧 MailSift – Smart Email Extractor</header>
   <div class="top-right">
-    <a href="/reset">🔁 Reset License</a>
+    <a href="/paywall">💳 Unlock</a>
+    &nbsp;|&nbsp;
+    <a href="/reset">🔁 Reset</a>
   </div>
   <div class="container">
     <form method="POST" enctype="multipart/form-data">
-  <label>Scrape website(s) (premium after 3 free uses):</label>
+  <label>Scrape website(s) (premium after 3 free fetches):</label>
   <label for="url_input">Website URL(s)</label>
   <textarea id="url_input" name="url" rows="2" placeholder="https://example.com or paste multiple URLs separated by newline or comma"></textarea>
   <button type="submit" formaction="/scrape" formmethod="post">🔍 Scrape URLs</button>
