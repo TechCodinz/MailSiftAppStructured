@@ -1,5 +1,6 @@
 import io
 import types
+from _pytest.monkeypatch import MonkeyPatch
 
 from app import extract_emails_from_text
 from typing import NoReturn
@@ -17,9 +18,6 @@ def test_extract_text_from_file_safe() -> None:
     text = file_parsing.extract_text_from_file(data, "test.txt")
     assert isinstance(text, str)
     assert "hello" in text.lower()
-
-
-from _pytest.monkeypatch import MonkeyPatch
 
 
 def test_verify_trc20_handles_nonjson(monkeypatch: MonkeyPatch) -> None:

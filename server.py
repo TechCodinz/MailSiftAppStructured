@@ -234,7 +234,7 @@ def paywall() -> Response | str:
 @limiter.limit(
     os.environ.get('SCRAPE_RATE_LIMIT', '20/minute') if limiter else None
 )  # type: ignore[arg-type]
-def scrape() -> Response | str:
+def scrape() -> Response | str:  # noqa: C901
     # Enforce free quota limit unless unlocked
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
     if (

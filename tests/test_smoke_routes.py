@@ -1,7 +1,7 @@
 from app import app
 
 
-def test_app_importable():
+def test_app_importable() -> None:
     # Basic smoke test: the Flask app object should exist and have a route map
     assert hasattr(app, "url_map")
     # Ensure index endpoint exists by name

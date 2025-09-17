@@ -2,7 +2,7 @@ import io
 from typing import BinaryIO
 
 
-def extract_text_from_file(file_stream: BinaryIO, filename: str) -> str:
+def extract_text_from_file(file_stream: BinaryIO, filename: str) -> str:  # noqa: C901
     """Extract text from common file types with safe fallbacks.
 
     - file_stream: file-like with .read() or raw bytes

@@ -5,7 +5,8 @@ def test_extract_from_html_simple() -> None:
     html = (
         '<html><body>Contact: '
         '<a href="mailto:foo@example.com">foo</a> '
-        'or bar (at) example (dot) org'</n+        '</body></html>'
+        'or bar (at) example (dot) org'
+        '</body></html>'
     )
     valid, invalid = extract_emails_from_html(html)
     assert 'foo@example.com' in valid

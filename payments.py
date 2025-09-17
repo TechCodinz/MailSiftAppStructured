@@ -165,7 +165,10 @@ def record_payment(txid: str, address: str, amount: float = 0.0) -> Dict[str, An
     return data[txid]
 
 
-def mark_verified(txid: str, verifier: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def mark_verified(
+    txid: str,
+    verifier: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     data = _load_payments()
     if txid not in data:
         return None
@@ -243,7 +246,7 @@ def verify_trc20_tx_online(txid: str) -> bool:  # noqa: C901
     Best-effort: try a public API and look for the txid. If requests is not available
     or the API fails, return False so the admin can verify manually.
     """
-    # requests is imported at module-level to allow tests to monkeypatch payments.requests
+    # requests imported at module-level to allow tests to monkeypatch payments.requests
     if 'requests' not in globals():
         try:
             import requests as _r
