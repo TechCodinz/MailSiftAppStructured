@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Admin Settings</title>
+    <style>
+      body { font-family: Arial, sans-serif; background:#111; color:#fff; padding:20px }
+      input { width:320px; padding:8px; border-radius:6px; border:none; margin:6px 0 }
+      label { display:block; margin-top:10px }
+      button { padding:10px 16px; background:#00ffc3; border:none; border-radius:6px; cursor:pointer; font-weight:bold }
+      .row { margin-bottom:10px }
+      .card { background:#1c1c1c; padding:16px; border-radius:10px; max-width:640px }
+      a { color:#00ffc3 }
+    </style>
+  </head>
+  <body>
+    <h2>Admin Settings</h2>
+    <div class="card">
+      <form method="post">
+        <label>Price (USDT)</label>
+        <input name="price_usdt" type="number" step="0.01" value="{{ settings.price_usdt }}" />
+
+        <label>Free Scrape Limit</label>
+        <input name="free_scrape_limit" type="number" step="1" value="{{ settings.free_scrape_limit }}" />
+
+        <label>Preview Sample Size</label>
+        <input name="preview_sample_size" type="number" step="1" value="{{ settings.preview_sample_size }}" />
+
+        <label>Wallet BTC</label>
+        <input name="wallet_btc" value="{{ settings.wallets.btc }}" />
+
+        <label>Wallet USDT (TRC20)</label>
+        <input name="wallet_trc20" value="{{ settings.wallets.trc20 }}" />
+
+        <label>Wallet ETH</label>
+        <input name="wallet_eth" value="{{ settings.wallets.eth }}" />
+
+        <div class="row">
+          <button type="submit">Save</button>
+          <a href="/admin/payments" style="margin-left:10px">Payments</a>
+        </div>
+      </form>
+    </div>
+    <div style="margin-top:20px">
+      <a href="/">← Back</a>
+    </div>
+  </body>
+ </html>
+

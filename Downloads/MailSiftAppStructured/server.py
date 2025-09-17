@@ -13,6 +13,7 @@ from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('MAILSIFT_SECRET', 'dev-secret-key')
+SETTINGS_FILE = os.environ.get('MAILSIFT_SETTINGS_FILE') or os.path.join(os.path.dirname(__file__), 'settings.json')
 
 
 def admin_auth_required(f):
@@ -32,15 +33,80 @@ def admin_auth_required(f):
     return inner
 
 
-def get_pricing_context():
-    """Provide template context for pricing and wallets from environment variables."""
-    price_usdt = float(os.environ.get('PRICE_USDT', '19') or 19)
-    return {
-        'price_usdt': price_usdt,
-        'wallet_btc': os.environ.get('WALLET_BTC', ''),
-        'wallet_trc20': os.environ.get('MAILSIFT_RECEIVE_ADDRESS', ''),
-        'wallet_eth': os.environ.get('WALLET_ETH', ''),
+def _load_settings():
+    if not os.path.exists(SETTINGS_FILE):
+        return {}
+    try:
+        with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_settings(data):
+    try:
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+def get_settings():
+    # Merge env defaults with file settings
+    data = _load_settings()
+    defaults = {
+        'price_usdt': float(os.environ.get('PRICE_USDT', '30') or 30),
+        'free_scrape_limit': int(os.environ.get('FREE_SCRAPE_LIMIT', '3') or 3),
+        'preview_sample_size': int(os.environ.get('PREVIEW_SAMPLE_SIZE', '20') or 20),
+        'wallets': {
+            'btc': os.environ.get('WALLET_BTC', ''),
+            'trc20': os.environ.get('MAILSIFT_RECEIVE_ADDRESS', ''),
+            'eth': os.environ.get('WALLET_ETH', ''),
+        },
+        'tiers': data.get('tiers') or [
+            {'id': 'free', 'name': 'Free', 'monthly_emails': 500, 'monthly_domains': 500, 'features': ['basic_extraction', 'csv_export'], 'price_usd': 0},
+            {'id': 'starter', 'name': 'Starter', 'monthly_emails': 5000, 'monthly_domains': 1000, 'features': ['basic_verification', 'limited_api', 'extra_fields'], 'price_usd_range': '20-50'},
+            {'id': 'pro', 'name': 'Pro', 'monthly_emails': 50000, 'features': ['full_verification', 'richer_data', 'priority_support'], 'price_usd_range': '100-300'},
+            {'id': 'business', 'name': 'Business/Enterprise', 'monthly_emails': 100000, 'features': ['advanced_features', 'SLA', 'dedicated_support'], 'price_usd_range': '500-2000+'},
+        ],
+        'payg_per_1000_usd': data.get('payg_per_1000_usd', '1-5'),
     }
+    # Apply file overrides
+    defaults.update({k: v for k, v in data.items() if k != 'wallets'})
+    if isinstance(data.get('wallets'), dict):
+        defaults['wallets'].update(data['wallets'])
+    return defaults
+
+
+def get_pricing_context():
+    """Provide template context for pricing, wallets and tiers."""
+    s = get_settings()
+    return {
+        'price_usdt': s['price_usdt'],
+        'wallet_btc': s['wallets'].get('btc', ''),
+        'wallet_trc20': s['wallets'].get('trc20', ''),
+        'wallet_eth': s['wallets'].get('eth', ''),
+        'tiers': s.get('tiers', []),
+        'payg_per_1000_usd': s.get('payg_per_1000_usd'),
+        'free_limit': s.get('free_scrape_limit'),
+        'preview_sample_size': s.get('preview_sample_size'),
+    }
+
+
+@app.template_filter('mask_email')
+def mask_email_filter(email):
+    try:
+        local, domain = email.split('@', 1)
+        local_mask = (local[:1] + '***') if len(local) >= 1 else '***'
+        parts = domain.split('.')
+        first = parts[0] if parts else ''
+        tld = parts[-1] if parts else ''
+        first_mask = (first[:1] + '***') if len(first) >= 1 else '***'
+        suffix = ('.' + tld) if tld else ''
+        return f"{local_mask}@{first_mask}{suffix}"
+    except Exception:
+        return '***'
 
 
 @app.route('/paywall', methods=['GET'])
@@ -55,7 +121,15 @@ def index():
     if 'extracted' in session:
         extracted = session.get('extracted', [])
         meta = session.get('meta', {})
-        results = {'valid': group_by_provider(extracted), 'meta': meta, 'invalid': session.get('invalid', [])}
+        s = get_settings()
+        if not session.get('unlocked'):
+            # Show only a preview sample
+            preview_n = max(1, int(s.get('preview_sample_size') or 20))
+            sample = extracted[:preview_n]
+            provider_groups = group_by_provider(sample)
+            results = {'valid': provider_groups, 'meta': meta, 'invalid': session.get('invalid', []), 'preview': True, 'preview_n': preview_n}
+        else:
+            results = {'valid': group_by_provider(extracted), 'meta': meta, 'invalid': session.get('invalid', [])}
     return render_template('index.html', results=results)
 
 
@@ -92,7 +166,8 @@ def scrape():
     # If we have URLs, enforce paywall after a small free quota and then fetch concurrently (best-effort)
     if url_list:
         # paywall gating for URL scraping usage
-        free_limit = int(os.environ.get('FREE_SCRAPE_LIMIT', '3') or 3)
+        s = get_settings()
+        free_limit = int(s.get('free_scrape_limit') or 3)
         quota = session.get('scrape_quota', 0)
         planned = len(url_list)
         if not session.get('unlocked') and (quota >= free_limit or (quota + planned) > free_limit):
@@ -136,8 +211,17 @@ def scrape():
     session['invalid'] = sorted(set(session.get('invalid', []) + total_invalid))
     session['meta'] = session.get('meta', {})
 
-    provider_groups = group_by_provider(session.get('extracted', []))
-    results = {'valid': provider_groups, 'per_site': per_site or None, 'invalid': session.get('invalid', []), 'meta': session.get('meta', {})}
+    # Apply preview gating to results list for display
+    all_emails = session.get('extracted', [])
+    s = get_settings()
+    if not session.get('unlocked'):
+        preview_n = max(1, int(s.get('preview_sample_size') or 20))
+        show = all_emails[:preview_n]
+        provider_groups = group_by_provider(show)
+        results = {'valid': provider_groups, 'per_site': per_site or None, 'invalid': session.get('invalid', []), 'meta': session.get('meta', {}), 'preview': True, 'preview_n': preview_n, 'quota': session.get('scrape_quota', 0), 'free_limit': s.get('free_scrape_limit')}
+    else:
+        provider_groups = group_by_provider(all_emails)
+        results = {'valid': provider_groups, 'per_site': per_site or None, 'invalid': session.get('invalid', []), 'meta': session.get('meta', {}), 'quota': session.get('scrape_quota', 0), 'free_limit': s.get('free_scrape_limit')}
     return render_template('index.html', results=results)
 
 
@@ -174,7 +258,7 @@ def pay():
                     auto_msg = 'Payment verified on-chain. License emailed to your contact.'
         except Exception:
             pass
-        return render_template('paywall.html', error=(auto_msg or ('Payment received. Awaiting verification. TXID: ' + str(txid))), **get_pricing_context())
+        return render_template('paywall.html', error=(auto_msg or ('Payment received. Awaiting verification. TXID: ' + str(txid))), pending_txid=txid, **get_pricing_context())
     return render_template('paywall.html')
 
 
@@ -315,6 +399,44 @@ def admin_verify_online():
         info = mark_verified(txid, verifier='trc20-auto')
         return jsonify({'ok': True, 'payment': info})
     return jsonify({'ok': False, 'error': 'not found or not confirmed on chain'}), 404
+
+
+@app.route('/pay/status/<txid>', methods=['GET'])
+def pay_status(txid):
+    info = get_payment(txid)
+    if not info:
+        return jsonify({'ok': False, 'verified': False}), 404
+    return jsonify({'ok': True, 'verified': bool(info.get('verified')), 'license': info.get('license')})
+
+
+@app.route('/admin/settings', methods=['GET', 'POST'])
+@admin_auth_required
+def admin_settings():
+    s = get_settings()
+    if request.method == 'POST':
+        # Update selected fields
+        try:
+            price = request.form.get('price_usdt')
+            free_lim = request.form.get('free_scrape_limit')
+            preview_n = request.form.get('preview_sample_size')
+            wallets = {
+                'btc': request.form.get('wallet_btc') or s['wallets'].get('btc', ''),
+                'trc20': request.form.get('wallet_trc20') or s['wallets'].get('trc20', ''),
+                'eth': request.form.get('wallet_eth') or s['wallets'].get('eth', ''),
+            }
+            data = _load_settings()
+            if price:
+                data['price_usdt'] = float(price)
+            if free_lim:
+                data['free_scrape_limit'] = int(free_lim)
+            if preview_n:
+                data['preview_sample_size'] = int(preview_n)
+            data['wallets'] = wallets
+            _save_settings(data)
+            return redirect(url_for('admin_settings'))
+        except Exception:
+            pass
+    return render_template('admin_settings.html', settings=get_settings())
 
 
 if __name__ == '__main__':

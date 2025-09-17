@@ -70,7 +70,7 @@
 <body>
     <div class="paywall">
         <h2>Unlock MailSift</h2>
-        <p>Enter your license key or pay {{ price_usdt or 19 }} USDT to get one instantly:</p>
+        <p>Enter your license key or pay {{ price_usdt or 30 }} USDT to get one instantly:</p>
         <form method="post" action="/unlock">
             <input type="text" name="license_key" placeholder="Enter License Key" required>
             <button type="submit">Unlock</button>
@@ -87,6 +87,11 @@
                 {% if wallet_trc20 %}<li>USDT (TRC20): <code>{{ wallet_trc20 }}</code></li>{% endif %}
                 {% if wallet_eth %}<li>ETH: <code>{{ wallet_eth }}</code></li>{% endif %}
             </ul>
+            <div id="qr" style="margin-top:10px"></div>
+            <div style="display:flex; gap:8px; margin-top:8px; justify-content:center">
+              {% if wallet_trc20 %}<button type="button" onclick="copyText('{{ wallet_trc20 }}')">Copy TRC20 Address</button>{% endif %}
+              <button type="button" onclick="copyText('{{ price_usdt }}')">Copy Amount</button>
+            </div>
             <p>After payment, contact us or use the key provided to unlock.</p>
         </div>
         <hr>
@@ -95,7 +100,7 @@
             <label>Asset</label>
             <input type="text" name="asset" value="USDT (TRC20)" required>
             <label>Amount</label>
-            <input type="text" name="amount" placeholder="{{ price_usdt or 19 }}" required>
+            <input type="text" name="amount" placeholder="{{ price_usdt or 30 }}" required>
             <label>TXID</label>
             <input type="text" name="txid" placeholder="Transaction ID" required>
             <label>Contact Email (optional)</label>
@@ -109,7 +114,27 @@
             <input type="text" name="txid" placeholder="Transaction ID" required>
             <button type="submit">Redeem</button>
         </form>
-        <p><a href="/admin/payments">Admin: Review Payments</a></p>
+        <p><a href="/admin/payments">Admin: Review Payments</a> • <a href="/admin/settings">Settings</a></p>
+        <div id="status" style="margin-top:10px; color:#9fefdf"></div>
     </div>
+    <script>
+      function copyText(t){ try{navigator.clipboard.writeText(t)}catch(e){} }
+      async function pollStatus(){
+        var txid = '{{ pending_txid or '' }}'
+        if(!txid) return
+        try{
+          const r = await fetch('/pay/status/' + encodeURIComponent(txid))
+          if(!r.ok) return
+          const j = await r.json()
+          if(j.verified){
+            document.getElementById('status').textContent = 'Payment verified. Your license: ' + (j.license || '')
+          } else {
+            document.getElementById('status').textContent = 'Awaiting on-chain confirmation...'
+            setTimeout(pollStatus, 7000)
+          }
+        }catch(e){ setTimeout(pollStatus, 10000) }
+      }
+      pollStatus()
+    </script>
 </body>
 </html>
