@@ -7,6 +7,7 @@ from flask import (
 import re
 import os
 from collections import defaultdict
+from typing import Any, Iterable
 
 
 app = Flask(__name__)
@@ -31,7 +32,7 @@ def normalize_deobfuscate(text: str) -> str:
     return s.strip()
 
 
-def extract_emails_from_text(text: str):
+def extract_emails_from_text(text: str) -> tuple[list[str], list[str]]:
     if not text:
         return [], []
     cleaned = normalize_deobfuscate(text)
@@ -108,7 +109,7 @@ def extract_emails_from_text(text: str):
     return sorted(set(valid)), sorted(set(invalid))
 
 
-def extract_emails_from_html(html_text: str):
+def extract_emails_from_html(html_text: str) -> tuple[list[str], list[str]]:
     if not html_text:
         return [], []
     try:
@@ -165,11 +166,11 @@ def detect_provider(email: str) -> str:
     return 'other'
 
 
-def group_by_provider(emails):
-    groups = defaultdict(list)
+def group_by_provider(emails: Iterable[str]) -> dict[str, list[str]]:
+    groups: defaultdict[str, list[str]] = defaultdict(list)
     for e in emails:
         groups[detect_provider(e)].append(e)
-    return groups
+    return dict(groups)
 
 
 def extract_domain(email: str) -> str:
@@ -239,7 +240,10 @@ def classify_expertise(email: str) -> str:
     return 'other'
 
 
-def enrich_meta_for_emails(emails, meta) -> dict:
+def enrich_meta_for_emails(
+    emails: list[str],
+    meta: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
     # Adds MX validation and role flag to meta; best-effort (network may fail)
     role_locals = {
         'info', 'admin', 'contact', 'sales', 'support', 'hello',
@@ -255,7 +259,7 @@ def enrich_meta_for_emails(emails, meta) -> dict:
         m = meta.get(e) or {}
         # role flag
         try:
-            local = e.split('@',1)[0].lower()
+            local = e.split('@', 1)[0].lower()
             if (
                 local in role_locals
                 or local.startswith('sales')
@@ -279,7 +283,7 @@ def enrich_meta_for_emails(emails, meta) -> dict:
     return meta
 
 
-def session_increment_scrape_quota(sess=None):
+def session_increment_scrape_quota(sess: dict[str, Any] | None = None) -> int:
     # For tests we avoid touching Flask's session proxy. If a dict-like `sess`
     # is provided, use it. Otherwise use a module-level fallback dict so calling
     # this function outside
@@ -298,13 +302,13 @@ def session_increment_scrape_quota(sess=None):
 
 
 @app.route('/', methods=['GET'])
-def index():
+def index() -> str:
     # minimal index used by tests
     return render_template('index.html')
 
 
 @app.route('/unlock', methods=['POST'])
-def unlock():
+def unlock() -> str:
     key = request.form.get('license_key', '').strip()
     if key == 'LET-ME-IN-DEV':
         session['unlocked'] = True
