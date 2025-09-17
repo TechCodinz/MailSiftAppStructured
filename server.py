@@ -199,7 +199,7 @@ def admin_auth_required(f: Callable[..., Response]) -> Callable[..., Response]:
     return inner
 
 
-@app.route('/')
+@app.route('/')  # type: ignore[misc]
 def index() -> Response | str:
     # show any current session results
     results = None
@@ -225,12 +225,12 @@ def get_wallets() -> dict:
     }
 
 
-@app.route('/paywall')
+@app.route('/paywall')  # type: ignore[misc]
 def paywall() -> Response | str:
     return render_template('paywall.html', wallets=get_wallets())
 
 
-@app.route('/scrape', methods=['POST'])
+@app.route('/scrape', methods=['POST'])  # type: ignore[misc]
 @limiter.limit(
     os.environ.get('SCRAPE_RATE_LIMIT', '20/minute')
     if limiter else '20/minute'
@@ -353,7 +353,7 @@ def scrape() -> Response | str:  # noqa: C901
     return render_template('index.html', results=results)
 
 
-@app.route('/pay', methods=['POST'])
+@app.route('/pay', methods=['POST'])  # type: ignore[misc]
 @limiter.limit(os.environ.get('PAY_RATE_LIMIT', '5/minute') if limiter else '5/minute')
 def pay() -> Response | str:
     if request.method == 'POST':
@@ -410,7 +410,7 @@ def pay() -> Response | str:
     return render_template('paywall.html')
 
 
-@app.route('/redeem', methods=['POST'])
+@app.route('/redeem', methods=['POST'])  # type: ignore[misc]
 def redeem() -> Response | str:
     key = request.form.get('license') or request.form.get('txid')
     payments = list_payments()
@@ -429,7 +429,7 @@ def redeem() -> Response | str:
     )
 
 
-@app.route('/unlock', methods=['POST'])
+@app.route('/unlock', methods=['POST'])  # type: ignore[misc]
 def unlock() -> Response | str:
     # Accept license key from paywall form and unlock if matches an issued license
     key = (request.form.get('license_key') or '').strip()
@@ -457,7 +457,7 @@ def unlock() -> Response | str:
     )
 
 
-@app.route('/admin/payments', methods=['GET', 'POST'])
+@app.route('/admin/payments', methods=['GET', 'POST'])  # type: ignore[misc]
 @limiter.limit(
     os.environ.get('ADMIN_RATE_LIMIT', '60/minute')
     if limiter else '60/minute'
@@ -477,7 +477,7 @@ def admin_payments() -> Response | str:
     return render_template('admin_payments.html', payments=payment_list)
 
 
-@app.route('/download')
+@app.route('/download')  # type: ignore[misc]
 def download() -> Response:
     # Gate downloads if past free quota and not unlocked
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
@@ -508,7 +508,7 @@ def download() -> Response:
     )
 
 
-@app.route('/download/by-domain.csv')
+@app.route('/download/by-domain.csv')  # type: ignore[misc]
 def download_by_domain() -> Response:
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
     if (
@@ -538,7 +538,7 @@ def download_by_domain() -> Response:
     )
 
 
-@app.route('/download/by-category.csv')
+@app.route('/download/by-category.csv')  # type: ignore[misc]
 def download_by_category() -> Response:
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
     if (
@@ -568,7 +568,7 @@ def download_by_category() -> Response:
     )
 
 
-@app.route('/download/json')
+@app.route('/download/json')  # type: ignore[misc]
 def download_json() -> Response:
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
     if (
@@ -599,7 +599,7 @@ def download_json() -> Response:
     )
 
 
-@app.route('/download/excel')
+@app.route('/download/excel')  # type: ignore[misc]
 def download_excel() -> Response:
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
     if (
@@ -660,7 +660,7 @@ def download_excel() -> Response:
     )
 
 
-@app.route('/reset')
+@app.route('/reset')  # type: ignore[misc]
 def reset() -> Response:
     # Clear user session data to reset license and results
     for k in ['extracted', 'invalid', 'meta', 'unlocked', 'scrape_quota']:
@@ -671,17 +671,17 @@ def reset() -> Response:
     return redirect(url_for('index'))
 
 
-@app.route('/healthz')
+@app.route('/healthz')  # type: ignore[misc]
 def healthz() -> Response:
     return jsonify({'ok': True}), 200
 
 
-@app.route('/metrics')
+@app.route('/metrics')  # type: ignore[misc]
 def metrics() -> tuple[bytes, int, dict[str, str]]:
     return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
 
 
-@app.route('/admin/payments/verify', methods=['POST'])
+@app.route('/admin/payments/verify', methods=['POST'])  # type: ignore[misc]
 @admin_auth_required
 def admin_verify() -> Response:
     txid = request.form.get('txid')
@@ -693,7 +693,7 @@ def admin_verify() -> Response:
     return jsonify({'ok': True, 'payment': info})
 
 
-@app.route('/admin/payments/verify-online', methods=['POST'])
+@app.route('/admin/payments/verify-online', methods=['POST'])  # type: ignore[misc]
 @admin_auth_required
 def admin_verify_online() -> Response:
     txid = request.form.get('txid')

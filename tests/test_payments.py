@@ -12,13 +12,13 @@ def test_record_and_get_payment(tmp_path: Path, monkeypatch: MonkeyPatch) -> Non
     P.PAYMENTS_FILE = str(p)
 
     rec = record_payment('tx1', 'TXYZ', 5.0)
-    assert rec['txid'] == 'tx1'
+    assert rec and rec['txid'] == 'tx1'
     loaded = get_payment('tx1')
-    assert loaded['address'] == 'TXYZ'
+    assert loaded is not None and loaded['address'] == 'TXYZ'
 
     verified = mark_verified('tx1', verifier='tests')
-    assert verified['verified'] is True
-    assert 'license' in verified
+    assert verified is not None and verified['verified'] is True
+    assert verified is not None and 'license' in verified
 
 
 def test_generate_license_uniqueness() -> None:

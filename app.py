@@ -7,7 +7,7 @@ from flask import (
 import re
 import os
 from collections import defaultdict
-from typing import Any, Iterable, Dict
+from typing import Any, Iterable, Dict, cast
 
 
 app = Flask(__name__)
@@ -295,25 +295,25 @@ def session_increment_scrape_quota(sess: dict[str, Any] | None = None) -> int:
         target = sess
     else:
         target = _test_session_fallback
-    q = target.get('scrape_quota', 0)
+    q: int = int(target.get('scrape_quota', 0))
     q += 1
     target['scrape_quota'] = q
     return q
 
 
-@app.route('/', methods=['GET'])
+@app.route('/', methods=['GET'])  # type: ignore[misc]
 def index() -> str:
     # minimal index used by tests
-    return render_template('index.html')
+    return cast(str, render_template('index.html'))
 
 
-@app.route('/unlock', methods=['POST'])
+@app.route('/unlock', methods=['POST'])  # type: ignore[misc]
 def unlock() -> str:
     key = request.form.get('license_key', '').strip()
     if key == 'LET-ME-IN-DEV':
         session['unlocked'] = True
-        return render_template('index.html')
-    return render_template(
+        return cast(str, render_template('index.html'))
+    return cast(str, render_template(
         'paywall.html',
         error='Invalid license key',
         wallets={
@@ -324,7 +324,7 @@ def unlock() -> str:
             ),
             'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
         },
-    )
+    ))
 
 
 if __name__ == '__main__':

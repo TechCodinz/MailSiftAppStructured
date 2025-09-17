@@ -13,13 +13,13 @@ def extract_text_from_file(file_stream: BinaryIO, filename: str) -> str:  # noqa
 
     # Read bytes safely
     data = b''
-    if hasattr(file_stream, 'read'):
+    if isinstance(file_stream, (bytes, bytearray)):
+        data = bytes(file_stream)
+    elif hasattr(file_stream, 'read'):
         try:
             data = file_stream.read()
         except Exception:
             data = b''
-    elif isinstance(file_stream, (bytes, bytearray)):
-        data = bytes(file_stream)
     else:
         data = b''
 

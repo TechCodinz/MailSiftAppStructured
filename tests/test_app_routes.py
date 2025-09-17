@@ -4,7 +4,7 @@ from flask.testing import FlaskClient
 from app import app
 
 
-@pytest.fixture
+@pytest.fixture()  # type: ignore[misc]
 def client() -> Generator[FlaskClient, None, None]:
     app.config['TESTING'] = True
     with app.test_client() as c:
