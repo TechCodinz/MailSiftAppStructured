@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Unlock MailSift Access</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background: #0e0e0e;
+            font-family: 'Inter', sans-serif;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .paywall {
+            background: #1c1c1c;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 0 20px #00ffc3;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        input, button {
+            padding: 10px 15px;
+            font-size: 1rem;
+            margin: 10px 0;
+            border-radius: 6px;
+            border: none;
+            outline: none;
+        }
+
+        input {
+            width: 100%;
+        }
+
+        button {
+            background-color: #00ffc3;
+            color: #000;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .wallets {
+            margin-top: 20px;
+            background: #111;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+
+        .error {
+            color: #ff4444;
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+
+        h2 {
+            color: #00ffc3;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="paywall">
+        <h2>Unlock MailSift</h2>
+        <p>Enter your license key or pay to get one instantly:</p>
+        <form method="post" action="/unlock">
+            <input type="text" name="license_key" placeholder="Enter License Key" required>
+            <button type="submit">Unlock</button>
+        </form>
+
+        {% if error %}
+            <div class="error">{{ error }}</div>
+        {% endif %}
+
+        <div class="wallets">
+            <p><strong>Crypto Wallets for Payment:</strong></p>
+            <ul>
+                <li>BTC: <code>{{ wallets.btc or 'set MAILSIFT_WALLET_BTC' }}</code></li>
+                <li>USDT (TRC20): <code>{{ wallets.trc20 or 'set MAILSIFT_WALLET_TRC20' }}</code></li>
+                <li>ETH: <code>{{ wallets.eth or 'set MAILSIFT_WALLET_ETH' }}</code></li>
+            </ul>
+            <p>After payment, submit your TXID below. When verified, a license key will be issued, which you can apply to unlock.</p>
+        </div>
+        <hr>
+        <h3>Submit Payment TXID</h3>
+        <form method="post" action="/pay">
+            <label>Asset</label>
+            <input type="text" name="asset" value="USDT (TRC20)" required>
+            <label>Amount</label>
+            <input type="text" name="amount" placeholder="Amount" required>
+            <label>TXID</label>
+            <input type="text" name="txid" placeholder="Transaction ID" required>
+            <label>Contact Email (optional)</label>
+            <input type="email" name="contact" placeholder="you@domain.com">
+            <button type="submit">Submit Payment</button>
+        </form>
+        <hr>
+        <h3>Redeem Verified TXID</h3>
+        <form method="post" action="/redeem">
+            <label>TXID</label>
+            <input type="text" name="txid" placeholder="Transaction ID" required>
+            <button type="submit">Redeem</button>
+        </form>
+        <p style="margin-top:16px; font-size:0.9rem; color:#9bd;">
+          By continuing you agree to our <a href="#" onclick="document.getElementById('policy').style.display='block';return false;">Privacy</a> and <a href="#" onclick="document.getElementById('refund').style.display='block';return false;">Refund</a> policies.
+        </p>
+        <div id="policy" style="display:none; text-align:left; background:#0c0c0c; padding:10px; border-radius:8px; margin-top:8px;">
+          <h4>Privacy</h4>
+          <p>We store only what is needed to operate: your session usage counters, payment TXIDs, optional contact email (if provided), and issued license keys. We do not sell or share your data. Remove your session data anytime via Reset. Payment records are kept for fraud prevention and support.</p>
+        </div>
+        <div id="refund" style="display:none; text-align:left; background:#0c0c0c; padding:10px; border-radius:8px; margin-top:8px;">
+          <h4>Refunds</h4>
+          <p>All sales are final once a license is issued. If your TXID cannot be verified within 24 hours, contact support with your TXID and we will assist or refund at our discretion.</p>
+        </div>
+        <p><a href="/admin/payments">Admin: Review Payments</a></p>
+    </div>
+</body>
+</html>

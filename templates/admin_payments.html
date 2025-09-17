@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Admin Payments</title>
+    <style>
+      body { font-family: Arial, sans-serif; background:#111; color:#fff; padding:20px }
+      table { width:100%; border-collapse: collapse }
+      td, th { padding:8px; border:1px solid #333 }
+      .verified { color:#0f0 }
+    </style>
+  </head>
+  <body>
+    <h2>Payments</h2>
+    <canvas id="chart" width="800" height="200" style="background:#0b0b0b; border-radius:8px; margin-bottom:12px"></canvas>
+    <table>
+      <thead>
+  <tr><th>Address</th><th>Amount</th><th>TXID</th><th>Contact</th><th>Verified</th><th>License</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for p in payments %}
+          <tr>
+            <td>{{ p.address }}</td>
+            <td>{{ p.amount }}</td>
+            <td>{{ p.txid }}</td>
+            <td>{{ p.contact }}</td>
+            <td>{% if p.verified %}<span class="verified">Yes</span>{% else %}No{% endif %}</td>
+            <td>{{ p.license or '' }}</td>
+            <td>
+              {% if not p.verified %}
+                <form method="post" style="display:inline">
+                  <input type="hidden" name="txid" value="{{ p.txid }}">
+                  <button type="submit">Mark Verified</button>
+                </form>
+                <form method="post" action="/admin/payments/verify-online" style="display:inline; margin-left:6px">
+                  <input type="hidden" name="txid" value="{{ p.txid }}">
+                  <button type="submit">Verify Online</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </body>
+  <script>
+    (function(){
+      try{
+        var data = {};
+        var rows = Array.from(document.querySelectorAll('tbody tr'));
+        rows.forEach(function(r){
+          var verified = r.querySelector('.verified') ? 'verified' : 'pending';
+          data[verified] = (data[verified]||0)+1;
+        });
+        var ctx = document.getElementById('chart');
+        if(ctx){
+          var c = ctx.getContext('2d');
+          var keys = Object.keys(data);
+          var maxv = 1; keys.forEach(function(k){ maxv = Math.max(maxv, data[k]); });
+          var w = ctx.width, h = ctx.height, barW = Math.max(60, Math.floor(w/(keys.length*2)));
+          c.clearRect(0,0,w,h);
+          keys.forEach(function(k,i){
+            var v = data[k];
+            var x = 40 + i*(barW+40);
+            var y = h - 30;
+            var bh = Math.floor((h-60) * (v/maxv));
+            c.fillStyle = k==='verified' ? '#0f0' : '#ffb300';
+            c.fillRect(x, y-bh, barW, bh);
+            c.fillStyle = '#9bd';
+            c.fillText(k+': '+v, x, y+12);
+          });
+        }
+      }catch(e){}
+    })();
+  </script>
+</html>

@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MailSift – Smart Email Extractor</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #1c1c1c;
+      color: #fff;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background-color: #00ffcc;
+      color: #000;
+      padding: 20px;
+      text-align: center;
+      font-size: 26px;
+      font-weight: bold;
+      box-shadow: 0 2px 8px rgba(0,255,204,0.4);
+    }
+    .container {
+      max-width: 1000px;
+      margin: 30px auto;
+      background: #2a2a2a;
+      padding: 30px;
+      border-radius: 10px;
+    }
+    textarea, input[type="file"] {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      margin-bottom: 20px;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+    }
+    button {
+      background-color: #00ffcc;
+      color: #000;
+      font-weight: bold;
+      border: none;
+      padding: 10px 25px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    h3 {
+      border-bottom: 1px solid #444;
+      padding-bottom: 5px;
+      margin-top: 30px;
+    }
+    ul {
+      list-style: none;
+      padding-left: 0;
+    }
+    li {
+      margin-bottom: 6px;
+      padding: 6px;
+      background-color: #333;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .category {
+      margin-bottom: 30px;
+    }
+    .actions {
+      margin-top: 20px;
+    }
+    .top-right {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+    }
+    .top-right a {
+      color: #00ffcc;
+      font-weight: bold;
+      text-decoration: none;
+    }
+    .meta-badge {
+      color: #9fefdf;
+      margin-left: 8px;
+      font-size: 0.85em;
+    }
+    .providers {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+    .provider-card {
+      background: linear-gradient(180deg,#2e2e2e,#272727);
+      padding: 12px;
+      border-radius: 10px;
+      width: 220px;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.6);
+    }
+    .provider-card h3 { margin: 0 0 8px 0 }
+    .site-block { background:#232323; padding:10px; margin-top:10px; border-radius:8px }
+    .error { color:#ff6b6b }
+  </style>
+</head>
+<body>
+  <header>📧 MailSift – Smart Email Extractor</header>
+  <div class="top-right">
+    <a href="/reset">🔁 Reset License</a>
+  </div>
+  <div class="container">
+    {% if results and results.hero %}
+      <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+        <div style="background:#202020; padding:12px; border-radius:10px; min-width:180px; text-align:center; box-shadow:0 2px 10px rgba(0,0,0,0.4)">
+          <div style="font-size:12px; color:#9bd;">TOTAL EMAILS</div>
+          <div style="font-size:22px; font-weight:bold;">{{ results.hero.total_emails }}</div>
+        </div>
+        <div style="background:#202020; padding:12px; border-radius:10px; min-width:180px; text-align:center; box-shadow:0 2px 10px rgba(0,0,0,0.4)">
+          <div style="font-size:12px; color:#9bd;">UNIQUE DOMAINS</div>
+          <div style="font-size:22px; font-weight:bold;">{{ results.hero.unique_domains }}</div>
+        </div>
+        <div style="background:#202020; padding:12px; border-radius:10px; min-width:180px; text-align:center; box-shadow:0 2px 10px rgba(0,0,0,0.4)">
+          <div style="font-size:12px; color:#9bd;">CATEGORIES</div>
+          <div style="font-size:22px; font-weight:bold;">{{ results.hero.categories }}</div>
+        </div>
+      </div>
+    {% endif %}
+    <form method="POST" enctype="multipart/form-data">
+  <label>Scrape website(s) (premium after 3 free uses):</label>
+  <label for="url_input">Website URL(s)</label>
+  <textarea id="url_input" name="url" rows="2" placeholder="https://example.com or paste multiple URLs separated by newline or comma"></textarea>
+  <button type="submit" formaction="/scrape" formmethod="post">🔍 Scrape URLs</button>
+
+  <label for="text_input">Paste Raw Text (or drag a file):</label>
+  <textarea id="text_input" name="text_input" rows="6" placeholder="Paste your text here..."></textarea>
+
+  <label for="file_input">Upload File (txt, pdf, docx, csv):</label>
+  <input id="file_input" type="file" title="Upload file" name="file_input" accept=".txt,.pdf,.docx,.csv">
+
+  <button type="submit">🚀 Extract Emails</button>
+    </form>
+
+    {% if results %}
+      <div class="actions">
+        <a href="/download"><button>⬇️ Download CSV</button></a>
+        <a href="/download/json"><button>📄 Download JSON</button></a>
+        <a href="/download/excel"><button>📊 Download Excel</button></a>
+        <a href="/download/by-domain.csv"><button>🌐 Download by Domain</button></a>
+        <a href="/download/by-category.csv"><button>🏷️ Download by Category</button></a>
+      </div>
+
+      {# Provider-separated buckets #}
+      {% if results.valid %}
+        <div class="providers">
+          {% for provider, emails in results.valid.items() %}
+            <div class="provider-card">
+        <h3>{{ provider|upper() }} <small>({{ emails|length }})</small></h3>
+              <ul>
+                {% for email in emails %}
+                  <li>
+          <strong class="copy-email">{{ email }}</strong>
+                    {% set m = results.meta.get(email) if results.meta else None %}
+                    {% if m %}
+                      <span class="meta-badge">mx: {{ m.mx }}{% if m.role %} • role{% endif %}</span>
+                    {% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
+        <button type="button" class="toggle-card">Toggle</button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {% if results.by_domain %}
+        <h3>By Domain</h3>
+        <div class="site-block">
+          <ul>
+            {% for dom, emails in results.by_domain.items() %}
+              <li><strong>{{ dom }}</strong> — {{ emails|length }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      {% if results.by_category %}
+        <h3>By Category</h3>
+        <div class="site-block">
+          <ul>
+            {% for cat, emails in results.by_category.items() %}
+              <li><strong>{{ cat }}</strong> — {{ emails|length }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      {# Per-site breakdown #}
+      {% if results.per_site %}
+        <h3>Per-site results</h3>
+        {% for site, data in results.per_site.items() %}
+          <div class="site-block">
+            <h4>{{ site }}</h4>
+            {% if data.error %}
+              <div class="error">{{ data.error }}</div>
+            {% else %}
+              <div>Valid: {{ data.valid | length }} — Invalid: {{ data.invalid | length }}</div>
+              <ul>
+                {% for e in data.valid %}
+                  <li>{{ e }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% endif %}
+
+      {# Invalid candidates #}
+      {% if results.invalid %}
+        <div class="category">
+          <h3>INVALID / CANDIDATES ({{ results.invalid | length }})</h3>
+          <ul>
+            {% for c in results.invalid %}
+              <li>{{ c }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    {% endif %}
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', function(){
+      var allEmails = Array.from(document.querySelectorAll('.copy-email')).map(function(e){ return e.textContent; });
+      var copyAllBtn = document.createElement('button');
+      copyAllBtn.textContent = '📋 Copy All';
+      copyAllBtn.style.marginLeft = '8px';
+      copyAllBtn.addEventListener('click', function(){
+        try{ navigator.clipboard.writeText(allEmails.join('\n')); }catch(e){}
+      });
+      var actions = document.querySelector('.actions');
+      if(actions){ actions.appendChild(copyAllBtn); }
+      document.querySelectorAll('.copy-email').forEach(function(el){
+        el.style.cursor = 'copy';
+        el.title = 'Click to copy email';
+        el.addEventListener('click', function(){
+          try{ navigator.clipboard.writeText(el.textContent); }catch(e){}
+        });
+      });
+      document.querySelectorAll('.toggle-card').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          var card = btn.closest('.provider-card');
+          if(card) card.classList.toggle('collapsed');
+        });
+      });
+    });
+  </script>
+</body>
+</html>

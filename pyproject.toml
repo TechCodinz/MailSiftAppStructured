@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mailsift"
+version = "0.1.0"
+description = "MailSift — smart email extractor"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [ { name = "MailSift contributors" } ]
+
+[tool.ruff]
+line-length = 88
+target-version = ["py311", "py312", "py313"]
+select = ["E", "F", "W", "C", "ANN"]
