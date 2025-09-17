@@ -7,12 +7,12 @@ import webbrowser
 # robust import that works inside PyInstaller one-file bundles
 flask_app = importlib.import_module("app").app
 
-def start_server():
+def start_server() -> None:
     # don't use debug=True inside a packaged app
     flask_app.run(host="127.0.0.1", port=5000, debug=False)
 
 
-def try_create_webview(url: str):
+def try_create_webview(url: str) -> bool:
     try:
         import webview
     except Exception as e:

@@ -3,7 +3,7 @@ import json
 import hmac
 import hashlib
 import time
-from typing import Optional
+from typing import Optional, Any, Dict
 import smtplib
 from email.message import EmailMessage
 import requests
@@ -17,12 +17,26 @@ SECRET = os.environ.get('MAILSIFT_SECRET', 'dev-secret-key')
 ADMIN_KEY = os.environ.get('MAILSIFT_ADMIN_KEY', 'admin-secret')
 
 
-def _load_payments():
+def _load_payments() -> Dict[str, Dict[str, Any]]:
     if SQLITE_DB:
         try:
             with sqlite3.connect(SQLITE_DB) as conn:
-                conn.execute('CREATE TABLE IF NOT EXISTS payments (txid TEXT PRIMARY KEY, address TEXT, amount REAL, timestamp INTEGER, verified INTEGER, license TEXT, contact TEXT, verified_by TEXT, verified_at INTEGER, asset TEXT)')
-                rows = conn.execute('SELECT txid,address,amount,timestamp,verified,license,contact,verified_by,verified_at,asset FROM payments').fetchall()
+                conn.execute(
+                    'CREATE TABLE IF NOT EXISTS payments ('
+                    'txid TEXT PRIMARY KEY,'
+                    'address TEXT,'
+                    'amount REAL,'
+                    'timestamp INTEGER,'
+                    'verified INTEGER,'
+                    'license TEXT,'
+                    'contact TEXT,'
+                    'verified_by TEXT,'
+                    'verified_at INTEGER,'
+                    'asset TEXT)'
+                )
+                rows = conn.execute(
+                    'SELECT txid,address,amount,timestamp,verified,license,contact,verified_by,verified_at,asset FROM payments'
+                ).fetchall()
                 out = {}
                 for r in rows:
                     out[r[0]] = {
@@ -42,15 +56,41 @@ def _load_payments():
         return {}
 
 
-def _save_payments(data):
+def _save_payments(data: Dict[str, Dict[str, Any]]) -> None:
     if SQLITE_DB:
         try:
             with sqlite3.connect(SQLITE_DB) as conn:
-                conn.execute('CREATE TABLE IF NOT EXISTS payments (txid TEXT PRIMARY KEY, address TEXT, amount REAL, timestamp INTEGER, verified INTEGER, license TEXT, contact TEXT, verified_by TEXT, verified_at INTEGER, asset TEXT)')
+                conn.execute(
+                    'CREATE TABLE IF NOT EXISTS payments ('
+                    'txid TEXT PRIMARY KEY,'
+                    'address TEXT,'
+                    'amount REAL,'
+                    'timestamp INTEGER,'
+                    'verified INTEGER,'
+                    'license TEXT,'
+                    'contact TEXT,'
+                    'verified_by TEXT,'
+                    'verified_at INTEGER,'
+                    'asset TEXT)'
+                )
                 for txid, v in data.items():
-                    conn.execute('INSERT OR REPLACE INTO payments (txid,address,amount,timestamp,verified,license,contact,verified_by,verified_at,asset) VALUES (?,?,?,?,?,?,?,?,?,?)', (
-                        txid, v.get('address'), float(v.get('amount') or 0.0), int(v.get('timestamp') or 0), 1 if v.get('verified') else 0, v.get('license'), v.get('contact'), v.get('verified_by'), v.get('verified_at'), v.get('asset')
-                    ))
+                    conn.execute(
+                        'INSERT OR REPLACE INTO payments ('
+                        'txid,address,amount,timestamp,verified,license,contact,verified_by,verified_at,asset'
+                        ') VALUES (?,?,?,?,?,?,?,?,?,?)',
+                        (
+                            txid,
+                            v.get('address'),
+                            float(v.get('amount') or 0.0),
+                            int(v.get('timestamp') or 0),
+                            1 if v.get('verified') else 0,
+                            v.get('license'),
+                            v.get('contact'),
+                            v.get('verified_by'),
+                            v.get('verified_at'),
+                            v.get('asset'),
+                        ),
+                    )
                 conn.commit()
             return
         except Exception:
@@ -90,7 +130,7 @@ def _save_payments(data):
             pass
 
 
-def record_payment(txid: str, address: str, amount: float = 0.0):
+def record_payment(txid: str, address: str, amount: float = 0.0) -> Dict[str, Any]:
     data = _load_payments()
     now = int(time.time())
     if txid in data:
@@ -107,7 +147,7 @@ def record_payment(txid: str, address: str, amount: float = 0.0):
     return data[txid]
 
 
-def mark_verified(txid: str, verifier: Optional[str] = None):
+def mark_verified(txid: str, verifier: Optional[str] = None) -> Optional[Dict[str, Any]]:
     data = _load_payments()
     if txid not in data:
         return None
@@ -128,19 +168,31 @@ def mark_verified(txid: str, verifier: Optional[str] = None):
     return data[txid]
 
 
-def get_payment(txid: str):
+def get_payment(txid: str) -> Optional[Dict[str, Any]]:
     data = _load_payments()
     return data.get(txid)
 
 
-def list_payments():
+def list_payments() -> Dict[str, Dict[str, Any]]:
     # If JSON exists and SQLite enabled but empty, migrate once
     data = _load_payments()
     try:
         if SQLITE_DB and os.path.exists(PAYMENTS_FILE):
             # If DB has fewer rows than JSON, populate
             with sqlite3.connect(SQLITE_DB) as conn:
-                conn.execute('CREATE TABLE IF NOT EXISTS payments (txid TEXT PRIMARY KEY, address TEXT, amount REAL, timestamp INTEGER, verified INTEGER, license TEXT, contact TEXT, verified_by TEXT, verified_at INTEGER, asset TEXT)')
+                conn.execute(
+                    'CREATE TABLE IF NOT EXISTS payments ('
+                    'txid TEXT PRIMARY KEY,'
+                    'address TEXT,'
+                    'amount REAL,'
+                    'timestamp INTEGER,'
+                    'verified INTEGER,'
+                    'license TEXT,'
+                    'contact TEXT,'
+                    'verified_by TEXT,'
+                    'verified_at INTEGER,'
+                    'asset TEXT)'
+                )
                 row = conn.execute('SELECT COUNT(1) FROM payments').fetchone()
                 count = int(row[0] or 0)
                 if count < len(data):
@@ -220,7 +272,7 @@ def verify_trc20_tx_online(txid: str) -> bool:
     return False
 
 
-def send_license_email(to_address: str, license_key: str):
+def send_license_email(to_address: str, license_key: str) -> bool:
     """Send a simple license email; uses SMTP_* env vars if present."""
     host = os.environ.get('SMTP_HOST')
     port = int(os.environ.get('SMTP_PORT', '0') or 0)
@@ -234,7 +286,9 @@ def send_license_email(to_address: str, license_key: str):
     msg['Subject'] = 'Your MailSift License Key'
     msg['From'] = sender
     msg['To'] = to_address
-    msg.set_content(f"Thank you for your payment. Your license key: {license_key}\n\nKeep it safe.")
+    msg.set_content(
+        f"Thank you for your payment. Your license key: {license_key}\n\nKeep it safe."
+    )
     try:
         with smtplib.SMTP(host, port, timeout=10) as s:
             if user and pwd:

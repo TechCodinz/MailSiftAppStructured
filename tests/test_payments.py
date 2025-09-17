@@ -1,9 +1,8 @@
-import os
-import tempfile
-from payments import record_payment, get_payment, mark_verified, list_payments, generate_license_for
+from payments import record_payment, get_payment, mark_verified, generate_license_for
+from typing import Any
 
 
-def test_record_and_get_payment(tmp_path, monkeypatch):
+def test_record_and_get_payment(tmp_path: Any, monkeypatch: Any) -> None:
     # point PAYMENTS_FILE to a temp file
     p = tmp_path / 'payments.json'
     monkeypatch.setenv('MAILSIFT_SECRET', 'test-secret')
@@ -21,7 +20,7 @@ def test_record_and_get_payment(tmp_path, monkeypatch):
     assert 'license' in verified
 
 
-def test_generate_license_uniqueness():
+def test_generate_license_uniqueness() -> None:
     a = generate_license_for('tx-a')
     b = generate_license_for('tx-b')
     assert a != b

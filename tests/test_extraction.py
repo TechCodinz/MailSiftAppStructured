@@ -1,7 +1,8 @@
 from app import extract_emails_from_text
+from typing import Any
 
 
-def test_simple_extraction():
+def test_simple_extraction() -> None:
     text = 'Contact us at info@example.com and support@sub.example.org.'
     valid, invalid = extract_emails_from_text(text)
     assert 'info@example.com' in valid
@@ -9,7 +10,7 @@ def test_simple_extraction():
     assert invalid == []
 
 
-def test_obfuscated_extraction():
+def test_obfuscated_extraction() -> None:
     text = 'Reach me at john (at) example (dot) com or jane[at]school.edu'
     valid, invalid = extract_emails_from_text(text)
     # With improved normalization, john@example.com should be extracted
@@ -17,17 +18,16 @@ def test_obfuscated_extraction():
     assert any('school.edu' in e for e in valid)
 
 
-def test_normalize_deobfuscate_direct():
+def test_normalize_deobfuscate_direct() -> None:
     from app import normalize_deobfuscate
     s = 'alice [at] example [dot] com'
     out = normalize_deobfuscate(s)
     assert '@' in out and '.' in out
 
 
-def test_quota_increment():
+def test_quota_increment() -> None:
     from app import session_increment_scrape_quota
-    # calling this increases a server-side session; here we only test it increments from 0 in a fresh session dict
-    # Note: this is a smoke test calling the function directly; actual Flask session behavior requires app context.
+    # calling this increases a server-side session counter
     # We expect it returns an int >= 1
     val = session_increment_scrape_quota()
     assert isinstance(val, int) and val >= 1
