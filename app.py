@@ -7,7 +7,7 @@ from flask import (
 import re
 import os
 from collections import defaultdict
-from typing import Any, Iterable
+from typing import Any, Iterable, Dict
 
 
 app = Flask(__name__)
@@ -283,6 +283,9 @@ def enrich_meta_for_emails(
     return meta
 
 
+_test_session_fallback: Dict[str, Any] = {}
+
+
 def session_increment_scrape_quota(sess: dict[str, Any] | None = None) -> int:
     # For tests we avoid touching Flask's session proxy. If a dict-like `sess`
     # is provided, use it. Otherwise use a module-level fallback dict so calling
@@ -291,9 +294,6 @@ def session_increment_scrape_quota(sess: dict[str, Any] | None = None) -> int:
     if isinstance(sess, dict):
         target = sess
     else:
-        global _test_session_fallback
-        if '_test_session_fallback' not in globals():
-            _test_session_fallback = {}
         target = _test_session_fallback
     q = target.get('scrape_quota', 0)
     q += 1

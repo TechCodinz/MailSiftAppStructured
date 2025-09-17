@@ -231,9 +231,7 @@ def paywall() -> Response | str:
 
 
 @app.route('/scrape', methods=['POST'])
-@limiter.limit(
-    os.environ.get('SCRAPE_RATE_LIMIT', '20/minute') if limiter else None
-)  # type: ignore[arg-type]
+@limiter.limit(os.environ.get('SCRAPE_RATE_LIMIT', '20/minute') if limiter else '20/minute')
 def scrape() -> Response | str:  # noqa: C901
     # Enforce free quota limit unless unlocked
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
@@ -320,8 +318,8 @@ def scrape() -> Response | str:  # noqa: C901
     emails_all = session.get('extracted', [])
     provider_groups = group_by_provider(emails_all)
     # compute domain and expertise maps
-    by_domain = {}
-    by_category = {}
+    by_domain: dict[str, list[str]] = {}
+    by_category: dict[str, list[str]] = {}
     for e in emails_all:
         d = extract_domain(e)
         if d:
@@ -353,9 +351,7 @@ def scrape() -> Response | str:  # noqa: C901
 
 
 @app.route('/pay', methods=['POST'])
-@limiter.limit(
-    os.environ.get('PAY_RATE_LIMIT', '5/minute') if limiter else None
-)  # type: ignore[arg-type]
+@limiter.limit(os.environ.get('PAY_RATE_LIMIT', '5/minute') if limiter else '5/minute')
 def pay() -> Response | str:
     if request.method == 'POST':
         txid = (request.form.get('txid') or '').strip()
@@ -459,9 +455,7 @@ def unlock() -> Response | str:
 
 
 @app.route('/admin/payments', methods=['GET', 'POST'])
-@limiter.limit(
-    os.environ.get('ADMIN_RATE_LIMIT', '60/minute') if limiter else None
-)  # type: ignore[arg-type]
+@limiter.limit(os.environ.get('ADMIN_RATE_LIMIT', '60/minute') if limiter else '60/minute')
 @admin_auth_required
 def admin_payments() -> Response | str:
     # Render the admin payments template with a list of payment records
