@@ -9,13 +9,30 @@ from email.message import EmailMessage
 import requests
 import tempfile
 import fcntl
+import sqlite3
 
 PAYMENTS_FILE = os.path.join(os.path.dirname(__file__), 'payments.json')
+SQLITE_DB = os.environ.get('MAILSIFT_SQLITE_DB')
 SECRET = os.environ.get('MAILSIFT_SECRET', 'dev-secret-key')
 ADMIN_KEY = os.environ.get('MAILSIFT_ADMIN_KEY', 'admin-secret')
 
 
 def _load_payments():
+    if SQLITE_DB:
+        try:
+            with sqlite3.connect(SQLITE_DB) as conn:
+                conn.execute('CREATE TABLE IF NOT EXISTS payments (txid TEXT PRIMARY KEY, address TEXT, amount REAL, timestamp INTEGER, verified INTEGER, license TEXT, contact TEXT, verified_by TEXT, verified_at INTEGER, asset TEXT)')
+                rows = conn.execute('SELECT txid,address,amount,timestamp,verified,license,contact,verified_by,verified_at,asset FROM payments').fetchall()
+                out = {}
+                for r in rows:
+                    out[r[0]] = {
+                        'txid': r[0], 'address': r[1], 'amount': r[2], 'timestamp': r[3],
+                        'verified': bool(r[4]), 'license': r[5], 'contact': r[6],
+                        'verified_by': r[7], 'verified_at': r[8], 'asset': r[9]
+                    }
+                return out
+        except Exception:
+            pass
     if not os.path.exists(PAYMENTS_FILE):
         return {}
     try:
@@ -26,6 +43,19 @@ def _load_payments():
 
 
 def _save_payments(data):
+    if SQLITE_DB:
+        try:
+            with sqlite3.connect(SQLITE_DB) as conn:
+                conn.execute('CREATE TABLE IF NOT EXISTS payments (txid TEXT PRIMARY KEY, address TEXT, amount REAL, timestamp INTEGER, verified INTEGER, license TEXT, contact TEXT, verified_by TEXT, verified_at INTEGER, asset TEXT)')
+                conn.execute('DELETE FROM payments')
+                for txid, v in data.items():
+                    conn.execute('INSERT OR REPLACE INTO payments (txid,address,amount,timestamp,verified,license,contact,verified_by,verified_at,asset) VALUES (?,?,?,?,?,?,?,?,?,?)', (
+                        txid, v.get('address'), float(v.get('amount') or 0.0), int(v.get('timestamp') or 0), 1 if v.get('verified') else 0, v.get('license'), v.get('contact'), v.get('verified_by'), v.get('verified_at'), v.get('asset')
+                    ))
+                conn.commit()
+            return
+        except Exception:
+            pass
     # Atomic write with file lock and audit shadow
     dirpath = os.path.dirname(PAYMENTS_FILE)
     os.makedirs(dirpath, exist_ok=True)

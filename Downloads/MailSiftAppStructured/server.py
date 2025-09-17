@@ -12,6 +12,7 @@ import random
 from datetime import datetime
 import logging
 import uuid
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 try:
     from flask_limiter import Limiter
@@ -52,11 +53,19 @@ if os.environ.get('ENVIRONMENT', 'production').lower() == 'production':
 def add_request_id():
     rid = request.headers.get('X-Request-ID') or str(uuid.uuid4())
     request.request_id = rid
+    request._start_ts = time.time()
 
 @app.after_request
 def add_request_id_header(resp):
     if hasattr(request, 'request_id'):
         resp.headers['X-Request-ID'] = request.request_id
+    try:
+        dur = (time.time() - getattr(request, '_start_ts', time.time())) * 1000.0
+        logger.info('%s %s %s %0.1fms id=%s ip=%s', request.method, request.path, resp.status_code, dur, request.request_id, request.headers.get('X-Forwarded-For', request.remote_addr))
+        HTTP_REQUESTS.labels(request.method, request.path, resp.status_code).inc()
+        HTTP_LATENCY.labels(request.method, request.path).observe(dur/1000.0)
+    except Exception:
+        pass
     return resp
 
 # Sentry
@@ -65,9 +74,13 @@ if sentry_sdk and os.environ.get('SENTRY_DSN'):
 
 # Limiter
 if Limiter:
-    limiter = Limiter(get_remote_address, app=app, default_limits=[os.environ.get('GLOBAL_RATE_LIMIT', '120 per minute')])
+    storage_uri = os.environ.get('RATELIMIT_STORAGE_URI')
+    limiter = Limiter(get_remote_address, app=app, default_limits=[os.environ.get('GLOBAL_RATE_LIMIT', '120 per minute')], storage_uri=storage_uri)
 else:
     limiter = None
+
+HTTP_REQUESTS = Counter('mailsift_http_requests_total', 'HTTP requests', ['method','path','status'])
+HTTP_LATENCY = Histogram('mailsift_http_request_duration_seconds', 'HTTP request latency', ['method','path'])
 
 
 @app.after_request
@@ -76,8 +89,8 @@ def add_security_headers(resp):
     resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
     resp.headers.setdefault('X-Frame-Options', 'DENY')
     resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
-    # Allow inline styles used in templates; restrict scripts to self
-    csp = "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; script-src 'self'"
+    # Allow inline styles/scripts used in templates
+    csp = "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; script-src 'self' 'unsafe-inline'"
     resp.headers.setdefault('Content-Security-Policy', csp)
     if request.scheme == 'https':
         resp.headers.setdefault('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
@@ -435,6 +448,11 @@ def reset():
 @app.route('/healthz')
 def healthz():
     return jsonify({'ok': True}), 200
+
+
+@app.route('/metrics')
+def metrics():
+    return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
 
 
 @app.route('/admin/payments/verify', methods=['POST'])
