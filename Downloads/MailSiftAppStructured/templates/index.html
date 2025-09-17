@@ -127,6 +127,8 @@
         <a href="/download"><button>⬇️ Download CSV</button></a>
         <a href="/download/json"><button>📄 Download JSON</button></a>
         <a href="/download/excel"><button>📊 Download Excel</button></a>
+        <a href="/download/by-domain.csv"><button>🌐 Download by Domain</button></a>
+        <a href="/download/by-category.csv"><button>🏷️ Download by Category</button></a>
       </div>
 
       {# Provider-separated buckets #}
@@ -149,6 +151,28 @@
         <button type="button" class="toggle-card">Toggle</button>
             </div>
           {% endfor %}
+        </div>
+      {% endif %}
+
+      {% if results.by_domain %}
+        <h3>By Domain</h3>
+        <div class="site-block">
+          <ul>
+            {% for dom, emails in results.by_domain.items() %}
+              <li><strong>{{ dom }}</strong> — {{ emails|length }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      {% if results.by_category %}
+        <h3>By Category</h3>
+        <div class="site-block">
+          <ul>
+            {% for cat, emails in results.by_category.items() %}
+              <li><strong>{{ cat }}</strong> — {{ emails|length }}</li>
+            {% endfor %}
+          </ul>
         </div>
       {% endif %}
 

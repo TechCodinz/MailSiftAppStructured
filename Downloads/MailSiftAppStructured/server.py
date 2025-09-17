@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, abort, send_file
 import os
-from app import extract_emails_from_text, extract_emails_from_html, group_by_provider, session_increment_scrape_quota, detect_provider
+from app import extract_emails_from_text, extract_emails_from_html, group_by_provider, session_increment_scrape_quota, detect_provider, extract_domain, classify_expertise
 from file_parsing import extract_text_from_file
 from payments import record_payment, get_payment, mark_verified, list_payments, verify_admin_key, verify_trc20_tx_online
 from functools import wraps
@@ -223,8 +223,25 @@ def scrape():
     # Increment quota once per scrape attempt
     session_increment_scrape_quota()
 
-    provider_groups = group_by_provider(session.get('extracted', []))
-    results = {'valid': provider_groups, 'per_site': per_site or None, 'invalid': session.get('invalid', []), 'meta': session.get('meta', {})}
+    emails_all = session.get('extracted', [])
+    provider_groups = group_by_provider(emails_all)
+    # compute domain and expertise maps
+    by_domain = {}
+    by_category = {}
+    for e in emails_all:
+        d = extract_domain(e)
+        if d:
+            by_domain.setdefault(d, []).append(e)
+        cat = classify_expertise(e)
+        by_category.setdefault(cat, []).append(e)
+    results = {
+        'valid': provider_groups,
+        'per_site': per_site or None,
+        'invalid': session.get('invalid', []),
+        'meta': session.get('meta', {}),
+        'by_domain': by_domain,
+        'by_category': by_category,
+    }
     return render_template('index.html', results=results)
 
 
@@ -363,6 +380,50 @@ def download():
     mem = io.BytesIO(si.getvalue().encode('utf-8'))
     mem.seek(0)
     return send_file(mem, mimetype='text/csv', as_attachment=True, download_name='extracted_emails.csv')
+
+
+@app.route('/download/by-domain.csv')
+def download_by_domain():
+    free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
+    if not session.get('unlocked') and session.get('scrape_quota', 0) >= free_limit:
+        return render_template('paywall.html', error='Please unlock to download results.', wallets={
+            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+        })
+    emails = session.get('extracted') or []
+    if not emails:
+        return redirect(url_for('index'))
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(['domain', 'email'])
+    for e in emails:
+        cw.writerow([extract_domain(e), e])
+    mem = io.BytesIO(si.getvalue().encode('utf-8'))
+    mem.seek(0)
+    return send_file(mem, mimetype='text/csv', as_attachment=True, download_name='emails_by_domain.csv')
+
+
+@app.route('/download/by-category.csv')
+def download_by_category():
+    free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
+    if not session.get('unlocked') and session.get('scrape_quota', 0) >= free_limit:
+        return render_template('paywall.html', error='Please unlock to download results.', wallets={
+            'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+            'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+            'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+        })
+    emails = session.get('extracted') or []
+    if not emails:
+        return redirect(url_for('index'))
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(['category', 'email'])
+    for e in emails:
+        cw.writerow([classify_expertise(e), e])
+    mem = io.BytesIO(si.getvalue().encode('utf-8'))
+    mem.seek(0)
+    return send_file(mem, mimetype='text/csv', as_attachment=True, download_name='emails_by_category.csv')
 
 
 @app.route('/download/json')

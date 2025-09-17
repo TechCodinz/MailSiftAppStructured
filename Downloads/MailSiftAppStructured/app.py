@@ -144,6 +144,42 @@ def group_by_provider(emails):
     return groups
 
 
+def extract_domain(email: str) -> str:
+    try:
+        return email.split('@', 1)[1].lower()
+    except Exception:
+        return ''
+
+
+def classify_expertise(email: str) -> str:
+    # Heuristic category by keywords in domain/local parts
+    try:
+        local, domain = email.split('@', 1)
+    except Exception:
+        return 'other'
+    text = (local + ' ' + domain).lower()
+    checks = [
+        ('legal', ('law', 'legal', 'attorney', 'advocate', 'solicitor', 'llp', 'barrister')),
+        ('healthcare', ('clinic', 'hospital', 'health', 'dental', 'dent', 'medic', 'pharma', 'care')),
+        ('education', ('edu', 'school', 'college', 'university', 'academy', 'campus')),
+        ('real_estate', ('realty', 'estate', 'realtor', 'broker', 'homes', 'property')),
+        ('finance', ('bank', 'finance', 'capital', 'fund', 'asset', 'equity', 'cpa', 'account')),
+        ('technology', ('tech', 'software', 'it', 'systems', 'dev', 'cloud', 'ai', 'data')),
+        ('marketing', ('marketing', 'media', 'advert', 'adtech', 'pr', 'brand', 'creative')),
+        ('manufacturing', ('mfg', 'factory', 'industrial', 'manufactur')),
+        ('government', ('gov', 'state', 'city', 'council', 'municipal')),
+        ('nonprofit', ('org', 'foundation', 'charity', 'ngo', 'nonprofit')),
+    ]
+    for name, kws in checks:
+        if any(k in text for k in kws):
+            return name
+    # corporate: single dot domain (e.g., acme.com) and not free providers
+    domain_only = domain
+    if domain_only and domain_only.count('.') == 1 and detect_provider(email) == 'corporate':
+        return 'corporate'
+    return 'other'
+
+
 def session_increment_scrape_quota(sess=None):
     # For tests we avoid touching Flask's session proxy. If a dict-like `sess` is provided,
     # use it. Otherwise use a module-level fallback dict so calling this function outside
