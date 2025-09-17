@@ -7,6 +7,8 @@ from typing import Optional
 import smtplib
 from email.message import EmailMessage
 import requests
+import tempfile
+import fcntl
 
 PAYMENTS_FILE = os.path.join(os.path.dirname(__file__), 'payments.json')
 SECRET = os.environ.get('MAILSIFT_SECRET', 'dev-secret-key')
@@ -24,8 +26,39 @@ def _load_payments():
 
 
 def _save_payments(data):
-    with open(PAYMENTS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2)
+    # Atomic write with file lock and audit shadow
+    dirpath = os.path.dirname(PAYMENTS_FILE)
+    os.makedirs(dirpath, exist_ok=True)
+    temp_fd, temp_path = tempfile.mkstemp(dir=dirpath, prefix='payments.', suffix='.tmp')
+    try:
+        with os.fdopen(temp_fd, 'w', encoding='utf-8') as tf:
+            json.dump(data, tf, indent=2)
+            tf.flush()
+            os.fsync(tf.fileno())
+        # Acquire lock on target during replace
+        with open(PAYMENTS_FILE, 'a+', encoding='utf-8') as target:
+            try:
+                fcntl.flock(target.fileno(), fcntl.LOCK_EX)
+            except Exception:
+                pass
+            os.replace(temp_path, PAYMENTS_FILE)
+            try:
+                fcntl.flock(target.fileno(), fcntl.LOCK_UN)
+            except Exception:
+                pass
+        # Append audit line
+        try:
+            audit_path = os.path.join(dirpath, 'payments_audit.log')
+            with open(audit_path, 'a', encoding='utf-8') as af:
+                af.write(json.dumps({'ts': int(time.time()), 'event': 'save', 'count': len(data)}) + '\n')
+        except Exception:
+            pass
+    finally:
+        try:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+        except Exception:
+            pass
 
 
 def record_payment(txid: str, address: str, amount: float = 0.0):

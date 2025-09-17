@@ -10,6 +10,22 @@ import json
 import time
 import random
 from datetime import datetime
+import logging
+import uuid
+
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+except Exception:
+    Limiter = None
+    def get_remote_address():
+        return request.remote_addr
+
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.flask import FlaskIntegration
+except Exception:
+    sentry_sdk = None
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('MAILSIFT_SECRET', 'dev-secret-key')
@@ -19,6 +35,39 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'true').lower() in ('1', 'true', 'yes')
 app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH_MB', '10')) * 1024 * 1024
+
+# Initialize logging
+logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO'))
+logger = logging.getLogger('mailsift')
+
+# Startup security checks
+if os.environ.get('ENVIRONMENT', 'production').lower() == 'production':
+    if app.secret_key in ('dev-secret-key', '', None):
+        raise RuntimeError('MAILSIFT_SECRET must be set in production')
+    if (os.environ.get('MAILSIFT_ADMIN_KEY') or 'admin-secret') in ('admin-secret', 'change-me-admin'):
+        raise RuntimeError('MAILSIFT_ADMIN_KEY must be set to a strong value in production')
+
+# Request ID injection
+@app.before_request
+def add_request_id():
+    rid = request.headers.get('X-Request-ID') or str(uuid.uuid4())
+    request.request_id = rid
+
+@app.after_request
+def add_request_id_header(resp):
+    if hasattr(request, 'request_id'):
+        resp.headers['X-Request-ID'] = request.request_id
+    return resp
+
+# Sentry
+if sentry_sdk and os.environ.get('SENTRY_DSN'):
+    sentry_sdk.init(dsn=os.environ['SENTRY_DSN'], integrations=[FlaskIntegration()], traces_sample_rate=float(os.environ.get('SENTRY_TRACES', '0.0') or 0.0))
+
+# Limiter
+if Limiter:
+    limiter = Limiter(get_remote_address, app=app, default_limits=[os.environ.get('GLOBAL_RATE_LIMIT', '120 per minute')])
+else:
+    limiter = None
 
 
 @app.after_request
@@ -39,6 +88,13 @@ def admin_auth_required(f):
     from functools import wraps
     @wraps(f)
     def inner(*args, **kwargs):
+        # IP allowlist (optional)
+        allowed = (os.environ.get('ADMIN_IP_ALLOWLIST') or '').strip()
+        if allowed:
+            ip = request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0].strip()
+            allow = {x.strip() for x in allowed.split(',') if x.strip()}
+            if ip not in allow:
+                return jsonify({'error': 'forbidden'}), 403
         # Support either simple key header or HTTP basic auth
         key = request.args.get('key') or request.form.get('key') or request.headers.get('X-Admin-Key')
         if not key:
@@ -73,6 +129,7 @@ def paywall():
 
 
 @app.route('/scrape', methods=['POST'])
+@limiter.limit(os.environ.get('SCRAPE_RATE_LIMIT', '20/minute') if limiter else None)  # type: ignore[arg-type]
 def scrape():
     # Enforce free quota limit unless unlocked
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
@@ -159,6 +216,7 @@ def scrape():
 
 
 @app.route('/pay', methods=['POST'])
+@limiter.limit(os.environ.get('PAY_RATE_LIMIT', '5/minute') if limiter else None)  # type: ignore[arg-type]
 def pay():
     if request.method == 'POST':
         txid = (request.form.get('txid') or '').strip()
@@ -255,6 +313,7 @@ def unlock():
 
 
 @app.route('/admin/payments', methods=['GET', 'POST'])
+@limiter.limit(os.environ.get('ADMIN_RATE_LIMIT', '60/minute') if limiter else None)  # type: ignore[arg-type]
 @admin_auth_required
 def admin_payments():
     # Render the admin payments template with a list of payment records

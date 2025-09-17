@@ -109,6 +109,17 @@
             <input type="text" name="txid" placeholder="Transaction ID" required>
             <button type="submit">Redeem</button>
         </form>
+        <p style="margin-top:16px; font-size:0.9rem; color:#9bd;">
+          By continuing you agree to our <a href="#" onclick="document.getElementById('policy').style.display='block';return false;">Privacy</a> and <a href="#" onclick="document.getElementById('refund').style.display='block';return false;">Refund</a> policies.
+        </p>
+        <div id="policy" style="display:none; text-align:left; background:#0c0c0c; padding:10px; border-radius:8px; margin-top:8px;">
+          <h4>Privacy</h4>
+          <p>We store only what is needed to operate: your session usage counters, payment TXIDs, optional contact email (if provided), and issued license keys. We do not sell or share your data. Remove your session data anytime via Reset. Payment records are kept for fraud prevention and support.</p>
+        </div>
+        <div id="refund" style="display:none; text-align:left; background:#0c0c0c; padding:10px; border-radius:8px; margin-top:8px;">
+          <h4>Refunds</h4>
+          <p>All sales are final once a license is issued. If your TXID cannot be verified within 24 hours, contact support with your TXID and we will assist or refund at our discretion.</p>
+        </div>
         <p><a href="/admin/payments">Admin: Review Payments</a></p>
     </div>
 </body>

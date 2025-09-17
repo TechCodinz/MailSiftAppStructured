@@ -173,7 +173,11 @@ def unlock():
     if key == 'LET-ME-IN-DEV':
         session['unlocked'] = True
         return render_template('index.html')
-    return render_template('paywall.html', error='Invalid license key')
+    return render_template('paywall.html', error='Invalid license key', wallets={
+        'btc': os.environ.get('MAILSIFT_WALLET_BTC'),
+        'trc20': os.environ.get('MAILSIFT_WALLET_TRC20') or os.environ.get('MAILSIFT_RECEIVE_ADDRESS'),
+        'eth': os.environ.get('MAILSIFT_WALLET_ETH'),
+    })
 
 
 if __name__ == '__main__':

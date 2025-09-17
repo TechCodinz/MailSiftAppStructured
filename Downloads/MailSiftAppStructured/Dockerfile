@@ -22,7 +22,8 @@ COPY . .
 
 # Default envs
 ENV FREE_SCRAPE_QUOTA=3 \
-    SESSION_COOKIE_SECURE=true
+    SESSION_COOKIE_SECURE=true \
+    ENVIRONMENT=production
 
 EXPOSE 8000
 
