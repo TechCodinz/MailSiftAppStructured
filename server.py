@@ -231,7 +231,10 @@ def paywall() -> Response | str:
 
 
 @app.route('/scrape', methods=['POST'])
-@limiter.limit(os.environ.get('SCRAPE_RATE_LIMIT', '20/minute') if limiter else '20/minute')
+@limiter.limit(
+    os.environ.get('SCRAPE_RATE_LIMIT', '20/minute')
+    if limiter else '20/minute'
+)
 def scrape() -> Response | str:  # noqa: C901
     # Enforce free quota limit unless unlocked
     free_limit = int(os.environ.get('FREE_SCRAPE_QUOTA', '3') or 3)
@@ -455,7 +458,10 @@ def unlock() -> Response | str:
 
 
 @app.route('/admin/payments', methods=['GET', 'POST'])
-@limiter.limit(os.environ.get('ADMIN_RATE_LIMIT', '60/minute') if limiter else '60/minute')
+@limiter.limit(
+    os.environ.get('ADMIN_RATE_LIMIT', '60/minute')
+    if limiter else '60/minute'
+)
 @admin_auth_required
 def admin_payments() -> Response | str:
     # Render the admin payments template with a list of payment records
