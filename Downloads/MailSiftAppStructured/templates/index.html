@@ -125,6 +125,9 @@
     </form>
 
     {% if results %}
+      {% if results.preview %}
+        <div class="error">Preview mode: showing first {{ results.preview_n }} results. Unlock to access all results and downloads.</div>
+      {% endif %}
       <div class="actions">
         <a href="/download"><button>⬇️ Download CSV</button></a>
         <a href="/download/json"><button>📄 Download JSON</button></a>

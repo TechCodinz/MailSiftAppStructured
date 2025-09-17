@@ -97,6 +97,13 @@
         <hr>
         <h3>Submit Payment TXID</h3>
         <form method="post" action="/pay">
+            <label>Plan</label>
+            <select name="plan">
+              <option value="one_time">One-time Unlock</option>
+              {% for t in tiers %}
+                <option value="{{ t.id }}">{{ t.name }}</option>
+              {% endfor %}
+            </select>
             <label>Asset</label>
             <input type="text" name="asset" value="USDT (TRC20)" required>
             <label>Amount</label>
@@ -115,6 +122,32 @@
             <button type="submit">Redeem</button>
         </form>
         <p><a href="/admin/payments">Admin: Review Payments</a> • <a href="/admin/settings">Settings</a></p>
+        {% if tiers %}
+        <div style="margin-top:16px; text-align:left; font-size:0.95rem">
+          <h3>Plans</h3>
+          <table style="width:100%; border-collapse:collapse">
+            <thead>
+              <tr><th style="text-align:left">Tier</th><th style="text-align:left">Monthly Emails</th><th style="text-align:left">Features</th><th style="text-align:left">Price (USD)</th></tr>
+            </thead>
+            <tbody>
+              {% for t in tiers %}
+                <tr>
+                  <td>{{ t.name }}</td>
+                  <td>{{ t.monthly_emails or t.monthly_domains }}</td>
+                  <td>{{ t.features|join(', ') }}</td>
+                  <td>{{ t.price_usd or t.price_usd_range }}</td>
+                </tr>
+              {% endfor %}
+              <tr>
+                <td>Pay-As-You-Go</td>
+                <td>Over quota</td>
+                <td>Extra 1,000 emails/domains</td>
+                <td>{{ payg_per_1000_usd }} per 1,000</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
         <div id="status" style="margin-top:10px; color:#9fefdf"></div>
     </div>
     <script>

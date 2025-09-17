@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 import os
 from app import extract_emails_from_text, extract_emails_from_html, group_by_provider, session_increment_scrape_quota, detect_provider
 from file_parsing import extract_text_from_file
-from payments import record_payment, get_payment, mark_verified, list_payments, verify_admin_key, verify_trc20_tx_online
+from payments import record_payment, get_payment, mark_verified, list_payments, verify_admin_key, verify_trc20_tx_online, find_by_license, get_usage, increment_usage
 from functools import wraps
 import io
 import csv
@@ -238,7 +238,8 @@ def pay():
             return render_template('paywall.html', error='Contact email required to deliver license.', **get_pricing_context())
         if not txid or not address:
             return render_template('paywall.html', error='txid and address required', **get_pricing_context())
-        rec = record_payment(txid, address, amount)
+        plan = request.form.get('plan') or 'one_time'
+        rec = record_payment(txid, address, amount, plan=plan, contact=contact)
         # attach contact if provided
         data = list_payments()
         if txid in data and contact:
@@ -269,6 +270,7 @@ def redeem():
     for txid, info in payments.items():
         if info.get('license') == key or txid == key:
             session['unlocked'] = True
+            session['license_key'] = info.get('license') or txid
             return render_template('paywall.html', error='Unlocked. License applied.', **get_pricing_context())
     return render_template('paywall.html', error='Invalid license or txid', **get_pricing_context())
 
@@ -293,6 +295,15 @@ def admin_payments():
 def download():
     if not session.get('unlocked'):
         return render_template('paywall.html', error='Please unlock to download results.', **get_pricing_context())
+    # increment usage by emails count and domains estimated
+    license_key = session.get('license_key')
+    if license_key:
+        emails = session.get('extracted') or []
+        domains = len({e.split('@',1)[1] for e in emails if '@' in e})
+        try:
+            increment_usage(license_key, emails_delta=len(emails), domains_delta=domains)
+        except Exception:
+            pass
     emails = session.get('extracted')
     if not emails:
         return redirect(url_for('index'))
@@ -310,6 +321,14 @@ def download():
 def download_json():
     if not session.get('unlocked'):
         return render_template('paywall.html', error='Please unlock to download results.', **get_pricing_context())
+    license_key = session.get('license_key')
+    if license_key:
+        emails = session.get('extracted') or []
+        domains = len({e.split('@',1)[1] for e in emails if '@' in e})
+        try:
+            increment_usage(license_key, emails_delta=len(emails), domains_delta=domains)
+        except Exception:
+            pass
     emails = session.get('extracted')
     meta = session.get('meta', {})
     if not emails:
@@ -328,6 +347,14 @@ def download_json():
 def download_excel():
     if not session.get('unlocked'):
         return render_template('paywall.html', error='Please unlock to download results.', **get_pricing_context())
+    license_key = session.get('license_key')
+    if license_key:
+        emails = session.get('extracted') or []
+        domains = len({e.split('@',1)[1] for e in emails if '@' in e})
+        try:
+            increment_usage(license_key, emails_delta=len(emails), domains_delta=domains)
+        except Exception:
+            pass
     emails = session.get('extracted') or []
     meta = session.get('meta', {})
     if not emails:
