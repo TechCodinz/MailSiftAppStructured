@@ -37,3 +37,8 @@ Create a `.env` or export env vars before launching to set:
 
 Serving the binary from the server
 Place the built artifact(s) in `dist/` and the web app route `/download/desktop` will serve the latest build.
+
+CI builds and GitHub Release
+- On tag push `v*`, GitHub Actions builds desktop binaries for Linux, Windows, and macOS and uploads them to the Release.
+- Workflow file: `.github/workflows/desktop-release.yml`
+- Manual run supported via “Run workflow”.
