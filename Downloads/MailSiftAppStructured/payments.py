@@ -47,7 +47,6 @@ def _save_payments(data):
         try:
             with sqlite3.connect(SQLITE_DB) as conn:
                 conn.execute('CREATE TABLE IF NOT EXISTS payments (txid TEXT PRIMARY KEY, address TEXT, amount REAL, timestamp INTEGER, verified INTEGER, license TEXT, contact TEXT, verified_by TEXT, verified_at INTEGER, asset TEXT)')
-                conn.execute('DELETE FROM payments')
                 for txid, v in data.items():
                     conn.execute('INSERT OR REPLACE INTO payments (txid,address,amount,timestamp,verified,license,contact,verified_by,verified_at,asset) VALUES (?,?,?,?,?,?,?,?,?,?)', (
                         txid, v.get('address'), float(v.get('amount') or 0.0), int(v.get('timestamp') or 0), 1 if v.get('verified') else 0, v.get('license'), v.get('contact'), v.get('verified_by'), v.get('verified_at'), v.get('asset')
@@ -94,6 +93,8 @@ def _save_payments(data):
 def record_payment(txid: str, address: str, amount: float = 0.0):
     data = _load_payments()
     now = int(time.time())
+    if txid in data:
+        return data[txid]
     data[txid] = {
         'txid': txid,
         'address': address,
@@ -133,7 +134,20 @@ def get_payment(txid: str):
 
 
 def list_payments():
-    return _load_payments()
+    # If JSON exists and SQLite enabled but empty, migrate once
+    data = _load_payments()
+    try:
+        if SQLITE_DB and os.path.exists(PAYMENTS_FILE):
+            # If DB has fewer rows than JSON, populate
+            with sqlite3.connect(SQLITE_DB) as conn:
+                conn.execute('CREATE TABLE IF NOT EXISTS payments (txid TEXT PRIMARY KEY, address TEXT, amount REAL, timestamp INTEGER, verified INTEGER, license TEXT, contact TEXT, verified_by TEXT, verified_at INTEGER, asset TEXT)')
+                row = conn.execute('SELECT COUNT(1) FROM payments').fetchone()
+                count = int(row[0] or 0)
+                if count < len(data):
+                    _save_payments(data)
+    except Exception:
+        pass
+    return data
 
 
 def generate_license_for(txid: str) -> str:
